@@ -1,0 +1,944 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Network Monitoring - Dashboard</title>
+    <link rel="icon" type="image/x-icon" href="/favicon.ico">
+    <meta name="description" content="Real-time network monitoring dashboard with device management, topology mapping, and performance reporting.">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;800;900&display=swap" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css" rel="stylesheet">
+    <link href="https://unpkg.com/vis-network/standalone/umd/vis-network.min.css" rel="stylesheet" type="text/css">
+    <link href="/style.css" rel="stylesheet">
+    <style>
+        #topology-network {
+            width: 100%;
+            flex: 1;
+            min-height: 0;
+            border: 1px solid #1f1f1f;
+            border-radius: 12px;
+            background-color: var(--bg-card);
+            background-image: radial-gradient(rgba(255,255,255,0.03) 1px, transparent 1px);
+            background-size: 20px 20px;
+        }
+        .page-section { 
+            width: 100%; 
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+        }
+        .page-section.active-page {
+            animation: fadeIn 0.15s ease-in;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="sidebar">
+        <div class="logo-container">
+            <img class="logo-img" src="/api/logo" alt="Logo" onerror="this.style.display='none'; document.getElementById('fallback-logo').style.display='flex';">
+            <div id="fallback-logo" class="logo" style="display: none;">IN</div>
+        </div>
+        <a href="javascript:void(0)" onclick="navigateTo('dashboard')" class="nav-icon active" id="nav-dashboard" title="Dashboard"><i class="bi bi-grid-1x2"></i></a>
+        <a href="javascript:void(0)" onclick="navigateTo('topology')" class="nav-icon" id="nav-topology" title="Topology"><i class="bi bi-share"></i></a>
+        <a href="javascript:void(0)" onclick="navigateTo('devices')" class="nav-icon" id="nav-devices" title="Devices"><i class="bi bi-hdd-network"></i></a>
+        <a href="javascript:void(0)" onclick="navigateTo('alerts')" class="nav-icon" id="nav-alerts" title="Alerts"><i class="bi bi-bell"></i></a>
+        <a href="javascript:void(0)" onclick="navigateTo('reports')" class="nav-icon" id="nav-reports" title="Reports"><i class="bi bi-file-earmark-bar-graph"></i></a>
+        <div class="nav-bottom">
+            <a href="/wall" target="_blank" class="nav-icon" title="Big Screen (NOC Wall)" style="color: #b2ff59;"><i class="bi bi-tv"></i></a>
+            <a href="javascript:void(0)" id="btnChangePw" class="nav-icon" title="Change Password" style="display:none; color: #888;"><i class="bi bi-gear"></i></a>
+            <a href="javascript:void(0)" id="btnAuth" class="nav-icon" title="Login" style="color: #888;"><i class="bi bi-lock"></i></a>
+        </div>
+    </div>
+
+    <div class="main-wrapper">
+
+        <section id="page-dashboard" class="page-section">
+            <div class="content">
+                <h1 class="page-title">Dashboard</h1>
+                <div class="row g-3">
+                    <div class="col-md-4 col-lg-3">
+                        <div class="widget-card d-flex flex-column w-100">
+                            <div class="card-header pb-0 border-0 mb-4">
+                                <h2 class="card-title">Network Status</h2>
+                            </div>
+                            <div class="status-grid d-flex flex-column gap-4">
+                                <div class="status-stat">
+                                    <div class="stat-value text-offline" id="stat-offline" style="font-size: 3rem; line-height: 1;">0</div>
+                                    <div class="stat-label"><span class="indicator ind-offline"></span>Offline</div>
+                                </div>
+                                <div class="status-stat">
+                                    <div class="stat-value text-online" id="stat-online">0</div>
+                                    <div class="stat-label"><span class="indicator ind-online"></span>Online</div>
+                                </div>
+                                <div class="status-stat">
+                                    <div class="stat-value text-warning" id="stat-paused">0</div>
+                                    <div class="stat-label"><span class="indicator ind-attention"></span>Paused</div>
+                                </div>
+                                <div class="status-stat">
+                                    <div class="stat-value text-white" id="stat-total">0</div>
+                                    <div class="stat-label"><span class="indicator" style="background:#fff; color:#fff;"></span>Total</div>
+                                </div>
+                            </div>
+                            <div class="dotted-visual mt-auto pt-4" id="dotted-visual-container"></div>
+                        </div>
+                    </div>
+                    <div class="col-md-8 col-lg-5">
+                        <div class="widget-card d-flex flex-column w-100">
+                            <div class="card-header">
+                                <h2 class="card-title text-offline">Offline Devices</h2>
+                                <div class="d-flex gap-3 text-secondary" style="font-size: 0.8rem;">
+                                    <span><span class="indicator ind-offline"></span> Down</span>
+                                </div>
+                            </div>
+                            <div class="table-responsive" style="border-radius: 8px; overflow: hidden; border: 1px solid #1f1f1f;">
+                                <table class="table table-dark table-striped table-hover table-sm align-middle mb-0 w-100" style="--bs-table-bg: transparent;">
+                                    <thead>
+                                        <tr>
+                                            <th class="text-secondary" style="font-weight: 500; font-size: 0.8rem;">Device</th>
+                                            <th class="text-secondary" style="font-weight: 500; font-size: 0.8rem;">IP Address</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="offline-devices-list">
+                                        <tr><td colspan="2" class="text-center text-secondary py-4" style="border: none;">Loading...</td></tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                            <div class="mt-3 d-flex justify-content-end align-items-center">
+                                <div id="dashboardPagination"></div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-lg-4">
+                        <div class="widget-card d-flex flex-column w-100">
+                            <div class="card-header">
+                                <h2 class="card-title mb-0">Recent Events (24H)</h2>
+                                <a href="/alerts" class="text-decoration-none text-secondary" style="font-size: 0.8rem; transition: color 0.2s;" onmouseover="this.style.color='#b2ff59'" onmouseout="this.style.color='var(--text-secondary)'">Full History &rarr;</a>
+                            </div>
+                            <ul class="feed-list" id="events-feed">
+                                <li class="feed-item text-secondary">Loading events...</li>
+                            </ul>
+                            <div class="mt-4 pt-3 d-flex justify-content-end align-items-center" style="border-top: 1px solid #1f1f1f;">
+                                <div id="dashboardEventsPagination"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ===== PAGE: TOPOLOGY ===== -->
+        <section id="page-topology" class="page-section d-none">
+            <div class="content d-flex flex-column" style="overflow-y: hidden;">
+                <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
+                    <h1 class="page-title mb-0">Network Topology</h1>
+                    <div class="d-flex flex-wrap align-items-center gap-1">
+                        <button class="btn btn-outline-success btn-sm me-2" id="btnSaveTopology"><i class="bi bi-floppy me-1"></i> Save Layout</button>
+                        <button class="btn btn-outline-secondary btn-sm me-2" id="btnFitTopology"><i class="bi bi-arrows-fullscreen me-1"></i> Fit Screen</button>
+                        <button class="btn btn-outline-secondary btn-sm" id="btnPhysicsToggle"><i class="bi bi-magnet me-1"></i> Toggle Physics</button>
+                        <button class="btn btn-outline-secondary btn-sm ms-2" id="btnFullscreenTopology"><i class="bi bi-arrows-angle-expand me-1"></i> Fullscreen</button>
+                    </div>
+                </div>
+                
+                <div class="d-flex align-items-center mb-3 border-bottom pb-2 gap-2" style="border-color: #333 !important;">
+                    <div class="input-group input-group-sm dropdown flex-grow-1" style="max-width: 300px;">
+                        <input type="text" class="form-control bg-transparent text-white border-secondary shadow-none dropdown-toggle fw-bold" id="topologySiteSearchInput" data-bs-toggle="dropdown" aria-expanded="false" placeholder="Search Locations" style="border-color: #333 !important;" autocomplete="off">
+                        <button class="btn btn-outline-secondary" style="border-color: #333 !important; color: #888;" type="button" onclick="var inp=document.getElementById('topologySiteSearchInput'); inp.value=''; inp.focus(); inp.dispatchEvent(new Event('input'));" title="Clear Search">
+                            <i class="bi bi-x"></i>
+                        </button>
+                        <div class="dropdown-menu dropdown-menu-dark shadow w-100 p-2" style="background-color: #1a1a1a; border-color: #333;">
+                            <div id="topologyTabsList" style="max-height: 200px; overflow-y: auto;"></div>
+                        </div>
+                    </div>
+                    <button class="btn btn-sm btn-outline-success ms-auto text-nowrap" id="btnAddTopologyTab"><i class="bi bi-plus"></i> New Location</button>
+                    <button class="btn btn-sm btn-outline-danger text-nowrap" id="btnDeleteTopologyTab" title="Delete Location"><i class="bi bi-trash me-1"></i> Delete Location</button>
+                </div>
+                <div id="topology-network" class="flex-grow-1"></div>
+            </div>
+        </section>
+
+        <!-- ===== PAGE: DEVICES ===== -->
+        <section id="page-devices" class="page-section d-none">
+            <div class="content">
+                <div class="row align-items-center mb-4">
+                    <div class="col-12 col-lg-auto mb-3 mb-lg-0">
+                        <h1 class="page-title mb-0">Device Management</h1>
+                    </div>
+                    <div class="col-12 col-lg d-flex flex-column flex-lg-row justify-content-lg-end gap-3">
+                        <div class="d-flex order-2 order-lg-1 justify-content-start justify-content-lg-end">
+                            <button id="bulkDeleteBtn" class="btn btn-danger d-none align-items-center gap-2 text-nowrap" style="border-radius: 50px;">
+                                <i class="bi bi-trash"></i> Delete Selected
+                            </button>
+                        </div>
+                        <div class="d-flex gap-2 order-1 order-lg-2 justify-content-start justify-content-lg-end">
+                            <button class="btn btn-outline-info d-flex align-items-center gap-2 text-nowrap" style="border-radius: 50px; border-color: #333; color: white;" onclick="window.location.href='/api/devices/export/csv'">
+                                <i class="bi bi-filetype-csv"></i> Export CSV
+                            </button>
+                            <button class="btn btn-outline-secondary d-flex align-items-center gap-2 text-nowrap" style="border-radius: 50px; border-color: #333; color: white;" data-bs-toggle="modal" data-bs-target="#discoverLanModal">
+                                <i class="bi bi-search"></i> Discover LAN
+                            </button>
+                            <button class="btn btn-primary d-flex align-items-center gap-2 text-nowrap" style="border-radius: 50px;" data-bs-toggle="modal" data-bs-target="#addDeviceModal">
+                                <i class="bi bi-plus-lg"></i> Add Device
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                <div class="row g-3">
+                    <div class="col-12">
+                        <div class="widget-card d-flex flex-column w-100">
+                            <div class="card-header d-flex justify-content-between align-items-center">
+                                <div class="d-flex gap-3 text-secondary">
+                                    <div class="input-group input-group-sm dropdown" style="width: 250px;">
+                                        <input type="text" class="form-control bg-transparent text-white border-secondary shadow-none dropdown-toggle" id="devicesPageSearchInput" data-bs-toggle="dropdown" aria-expanded="false" placeholder="Search Devices" style="border-color: #333 !important;" autocomplete="off">
+                                        <button class="btn btn-outline-secondary" style="border-color: #333 !important; color: #888;" type="button" onclick="document.getElementById('devicesPageSearchInput').value=''; document.getElementById('devicesPageSearchInput').dispatchEvent(new Event('input'))" title="Clear Search">
+                                            <i class="bi bi-x"></i>
+                                        </button>
+                                        <div class="dropdown-menu dropdown-menu-dark shadow w-100 p-2" style="background-color: #1a1a1a; border-color: #333;">
+                                            <div id="devicesPageComboList" style="max-height: 200px; overflow-y: auto;"></div>
+                                        </div>
+                                    </div>
+                                    <select id="devicesFilterSubnet" class="form-select form-select-sm bg-transparent text-white shadow-none" style="width: 180px; border-color: #333 !important;">
+                                        <option value="all" style="background: #1a1a1a; color: #fff;">All Subnets</option>
+                                    </select>
+                                    <select id="devicesFilterStatus" class="form-select form-select-sm bg-transparent text-white shadow-none" style="width: 130px; border-color: #333 !important;">
+                                        <option value="all" style="background: #1a1a1a; color: #fff;">All Status</option>
+                                        <option value="online" style="background: #1a1a1a; color: #fff;">Online</option>
+                                        <option value="offline" style="background: #1a1a1a; color: #fff;">Offline</option>
+                                        <option value="paused" style="background: #1a1a1a; color: #fff;">Paused</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="table-responsive" style="border-radius: 8px; overflow: hidden; border: 1px solid #1f1f1f;">
+                                <table class="table table-dark table-striped table-hover table-sm align-middle mb-0 w-100" style="--bs-table-bg: transparent;">
+                                    <thead>
+                                        <tr>
+                                            <th style="width: 40px; text-align: center;"><input class="form-check-input bg-transparent border-secondary shadow-none" type="checkbox" id="selectAll"></th>
+                                            <th class="text-secondary" style="font-weight: 500; font-size: 0.8rem;">Name</th>
+                                            <th class="text-secondary" style="font-weight: 500; font-size: 0.8rem;">Type</th>
+                                            <th class="text-secondary" style="font-weight: 500; font-size: 0.8rem;">IP Address</th>
+                                            <th class="text-secondary" style="font-weight: 500; font-size: 0.8rem;">Status</th>
+                                            <th class="text-secondary text-center" style="font-weight: 500; font-size: 0.8rem; width: 80px;">Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="device-management-list">
+                                        <tr><td colspan="7" class="text-center text-secondary py-4" style="border: none;">Loading devices...</td></tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                            <div class="mt-4 pt-3 d-flex justify-content-between align-items-center" style="border-top: 1px solid #1f1f1f;">
+                                <span id="deviceListCount" class="text-secondary" style="font-size: 0.8rem;">Showing 0 devices</span>
+                                <div id="devicesPagination"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ===== PAGE: ALERTS ===== -->
+        <section id="page-alerts" class="page-section d-none">
+            <div class="content">
+                <div class="row align-items-center mb-4">
+                    <div class="col-12 col-lg-auto mb-3 mb-lg-0">
+                        <h1 class="page-title mb-0">Alert History</h1>
+                    </div>
+                </div>
+                <div class="widget-card d-flex flex-column">
+                      <div class="d-flex flex-wrap mb-3 gap-2">
+                          <div class="input-group input-group-sm dropdown" style="width: 250px;">
+                                        <input type="text" class="form-control bg-transparent text-white border-secondary shadow-none dropdown-toggle" id="alertsPageSearchInput" data-bs-toggle="dropdown" aria-expanded="false" placeholder="Search Devices" style="border-color: #333 !important;" autocomplete="off">
+                                        <button class="btn btn-outline-secondary" style="border-color: #333 !important; color: #888;" type="button" onclick="document.getElementById('alertsPageSearchInput').value=''; document.getElementById('alertsPageSearchInput').dispatchEvent(new Event('input'))" title="Clear Search">
+                                            <i class="bi bi-x"></i>
+                                        </button>
+                                        <div class="dropdown-menu dropdown-menu-dark shadow w-100 p-2" style="background-color: #1a1a1a; border-color: #333;">
+                                            <div id="alertsPageComboList" style="max-height: 200px; overflow-y: auto;"></div>
+                                        </div>
+                                    </div>
+                          <select id="alertsStatusFilter" class="form-select form-select-sm bg-transparent text-white border-secondary shadow-none" style="width: auto; border-color: #333 !important;">
+                            <option value="all" style="background: #1a1a1a;">All Status</option>
+                            <option value="ONLINE" style="background: #1a1a1a;">Online</option>
+                            <option value="OFFLINE" style="background: #1a1a1a;">Offline</option>
+                            <option value="PAUSED" style="background: #1a1a1a;">Paused</option>
+                            <option value="RESUMED" style="background: #1a1a1a;">Resumed</option>
+                        </select>
+                          <select id="alertsTimeFilter" class="form-select form-select-sm bg-transparent text-white border-secondary shadow-none" style="width: auto; border-color: #333 !important;">
+                              <option value="24h" style="background: #1a1a1a;" selected>Last 24 Hours</option>
+                              <option value="7d" style="background: #1a1a1a;">Last 7 Days</option>
+                              <option value="30d" style="background: #1a1a1a;">Last 30 Days</option>
+                          </select>
+                      </div>
+                    <div class="table-responsive" style="border-radius: 8px; overflow: hidden; border: 1px solid #1f1f1f;">
+                        <table class="table table-dark table-hover table-sm align-middle mb-0 w-100" style="--bs-table-bg: transparent;">
+                            <thead>
+                                <tr>
+                                    <th class="text-secondary ps-3" style="font-weight: 500; font-size: 0.8rem; width: 40%;">Device</th>
+                                    <th class="text-secondary" style="font-weight: 500; font-size: 0.8rem; width: 30%;">IP Address</th>
+                                    <th class="text-secondary" style="font-weight: 500; font-size: 0.8rem; width: 30%;">Status</th>
+                                </tr>
+                            </thead>
+                            <tbody id="alertsAccordion" style="font-size: 0.9rem;"></tbody>
+                        </table>
+                    </div>
+                    <div class="mt-4 pt-3 d-flex justify-content-end align-items-center" style="border-top: 1px solid #1f1f1f;">
+                        <div id="alertsPagination"></div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ===== PAGE: REPORTS ===== -->
+        <section id="page-reports" class="page-section d-none">
+            <div class="content">
+                <div class="row align-items-center mb-4">
+                    <div class="col-12 col-lg-auto mb-3 mb-lg-0">
+                        <h1 class="page-title mb-0">Performance Reports</h1>
+                    </div>
+                    <div class="col-12 col-lg d-flex flex-wrap justify-content-lg-end gap-2">
+                        <div class="input-group input-group-sm dropdown" style="width: 200px; flex-shrink: 0;">
+                                        <input type="text" class="form-control bg-transparent text-white border-secondary shadow-none dropdown-toggle" id="reportDeviceSearchInput" data-bs-toggle="dropdown" aria-expanded="false" placeholder="Search Devices" style="border-color: #333 !important;" autocomplete="off">
+                                        <button class="btn btn-outline-secondary" style="border-color: #333 !important; color: #888;" type="button" onclick="document.getElementById('reportDeviceSearchInput').value=''; document.getElementById('reportDeviceSearchInput').dispatchEvent(new Event('input'))" title="Clear Search">
+                                            <i class="bi bi-x"></i>
+                                        </button>
+                                        <div class="dropdown-menu dropdown-menu-dark shadow w-100 p-2" style="background-color: #1a1a1a; border-color: #333;">
+                                            <div id="reportDeviceComboList" style="max-height: 200px; overflow-y: auto;"></div>
+                                        </div>
+                                    </div>
+                        <button class="btn btn-outline-secondary d-flex align-items-center gap-2" id="btnExportPdf" style="border-radius: 6px; border-color: #333; color: white;">
+                            <i class="bi bi-file-earmark-pdf"></i> Export PDF
+                        </button>
+                        <select id="reportTimeFilter" class="form-select bg-transparent text-white shadow-none" style="width: auto; border-color: #333 !important;">
+                            <option value="24h" style="background: #1a1a1a; color: #fff;">Last 24 Hours</option>
+                            <option value="7d" style="background: #1a1a1a; color: #fff;">Last 7 Days</option>
+                            <option value="30d" style="background: #1a1a1a; color: #fff;">Last 30 Days</option>
+                            <option value="custom" style="background: #1a1a1a; color: #fff;">Custom Range</option>
+                        </select>
+                        <div id="reportCustomDateContainer" class="d-none align-items-center flex-wrap gap-2">
+                            <input type="datetime-local" id="reportStartDate" class="form-control bg-transparent text-white shadow-none" style="width: auto; border-color: #333 !important; color-scheme: dark;">
+                            <span class="text-secondary">to</span>
+                            <input type="datetime-local" id="reportEndDate" class="form-control bg-transparent text-white shadow-none" style="width: auto; border-color: #333 !important; color-scheme: dark;">
+                            <button class="btn btn-outline-success" id="btnApplyCustomDate" style="border-radius: 6px;">Apply</button>
+                        </div>
+                    </div>
+                </div>
+                <div id="reportContentWrapper" style="display: none;">
+                    <div class="row g-3 mb-4">
+                        <div class="col-6 col-md-3">
+                            <div class="widget-card d-flex flex-column p-4">
+                                  <div class="text-secondary fw-bold" style="font-size: 0.75rem; letter-spacing: 1px;">GLOBAL UPTIME</div>
+                                  <div class="d-flex align-items-baseline gap-2 mt-2">
+                                      <h2 class="mb-0 text-white fw-bold" id="reportUptime">--%</h2>
+                                  </div>
+                            </div>
+                        </div>
+                        <div class="col-6 col-md-3">
+                            <div class="widget-card d-flex flex-column p-4">
+                                  <div class="text-secondary fw-bold" style="font-size: 0.75rem; letter-spacing: 1px;">AVG LATENCY</div>
+                                  <div class="d-flex align-items-baseline gap-2 mt-2">
+                                      <h2 class="mb-0 text-white fw-bold" id="reportLatency">--ms</h2>
+                                  </div>
+                            </div>
+                        </div>
+                        <div class="col-6 col-md-3">
+                            <div class="widget-card d-flex flex-column p-4">
+                                <div class="text-secondary fw-bold" style="font-size: 0.75rem; letter-spacing: 1px;">INCIDENTS</div>
+                                <div class="d-flex align-items-baseline gap-2 mt-2">
+                                    <h2 class="mb-0 text-white fw-bold" id="totalIncidentsKpi">--</h2>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-6 col-md-3">
+                            <div class="widget-card d-flex flex-column p-4">
+                                <div class="text-secondary fw-bold" style="font-size: 0.75rem; letter-spacing: 1px;">SLA COMPLIANCE</div>
+                                <div class="d-flex align-items-baseline gap-2 mt-2">
+                                      <h2 class="mb-0 text-white fw-bold" id="reportSla">100%</h2>
+                                      <span class="text-secondary" style="font-size: 0.8rem;">Target: 99.9%</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Heatmap and Timeline -->
+                    <div class="row g-4 mb-4">
+                        <div class="col-12 col-xl-8">
+                            <div class="widget-card p-4">
+                                <h6 class="text-white fw-bold mb-3" style="letter-spacing: 0.5px;">UPTIME HEATMAP</h6>
+                                <div id="uptimeHeatmapContainer" class="d-flex gap-1 flex-wrap align-items-center"></div>
+                                <div class="d-flex gap-3 mt-3" style="font-size: 0.75rem; color: #888;">
+                                    <div class="d-flex align-items-center gap-1">
+                                        <div style="width: 10px; height: 10px; border-radius: 2px;" class="heatmap-100"></div> No Incidents
+                                    </div>
+                                    <div class="d-flex align-items-center gap-1">
+                                        <div style="width: 10px; height: 10px; border-radius: 2px;" class="heatmap-90"></div> &ge;95% Uptime
+                                    </div>
+                                    <div class="d-flex align-items-center gap-1">
+                                        <div style="width: 10px; height: 10px; border-radius: 2px;" class="heatmap-50"></div> &ge;85% Uptime
+                                    </div>
+                                    <div class="d-flex align-items-center gap-1">
+                                        <div style="width: 10px; height: 10px; border-radius: 2px;" class="heatmap-0"></div> &lt;85% Uptime
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-12 col-xl-4">
+                            <div class="widget-card p-4">
+                                <h6 class="text-white fw-bold mb-3" style="letter-spacing: 0.5px;">INCIDENT FEED</h6>
+                                <div id="incidentTimeline" class="d-flex flex-column gap-3"></div>
+                                <div class="mt-4 pt-3 d-flex justify-content-end align-items-center" style="border-top: 1px solid #1f1f1f;">
+                                    <div id="reportsPagination"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div id="reportEmptyState" class="d-flex flex-column align-items-center justify-content-center py-5 mt-4" style="border: 1px dashed #333; border-radius: 12px; background: rgba(26,26,26,0.5); min-height: 400px;">
+                    <i class="bi bi-bar-chart-line text-secondary mb-3" style="font-size: 3rem;"></i>
+                    <h5 class="text-white fw-bold mb-1">No Device Selected</h5>
+                    <p class="text-secondary mb-0">Search and select a device from the dropdown above to view its performance reports.</p>
+                </div>
+            </div>
+        </section>
+
+    </div><!-- end main-wrapper -->
+
+    <!-- ===== Add Device Modal ===== -->
+    <div class="modal fade" id="addDeviceModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content" style="background-color: var(--bg-card); border: 1px solid #1f1f1f; border-radius: 12px;">
+                <div class="modal-header border-bottom" style="border-color: #222 !important;">
+                    <h5 class="modal-title text-white fw-bold">Add New Device</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body p-4">
+                    <form id="addDeviceForm">
+                        <div class="mb-3">
+                            <label class="form-label text-secondary" style="font-size: 0.85rem; font-weight: 500;">Device Name (Defaults to IP if blank)</label>
+                            <input type="text" class="form-control bg-transparent text-white" id="newDeviceName" style="border-color: #333; box-shadow: none;" placeholder="e.g. Core-SW02">
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label text-secondary" style="font-size: 0.85rem; font-weight: 500;">IP Address</label>
+                            <input type="text" class="form-control bg-transparent text-white" id="newDeviceIp" required style="border-color: #333; box-shadow: none; font-family: monospace;" placeholder="10.x.x.x">
+                        </div>
+                        <div class="row g-3 mb-4">
+                            <div class="col-7">
+                                <label class="form-label text-secondary" style="font-size: 0.85rem; font-weight: 500;">Device Type</label>
+                                <select class="form-select bg-transparent text-white" id="newDeviceType" style="border-color: #333; box-shadow: none;">
+                                      <optgroup label="Core Network" style="background: #222; color: #aaa; font-weight: bold;">
+                                          <option value="Router" style="background: #1a1a1a; color: #fff;">Router</option>
+                                          <option value="Switch" style="background: #1a1a1a; color: #fff;">Switch</option>
+                                          <option value="Gateway" style="background: #1a1a1a; color: #fff;">Gateway</option>
+                                          <option value="Firewall" style="background: #1a1a1a; color: #fff;">Firewall</option>
+                                          <option value="Security Appliance" style="background: #1a1a1a; color: #fff;">Security Appliance</option>
+                                          <option value="Load Balancer" style="background: #1a1a1a; color: #fff;">Load Balancer</option>
+                                          <option value="Controller" style="background: #1a1a1a; color: #fff;">Controller</option>
+                                          <option value="Wireless Controller (WLC)" style="background: #1a1a1a; color: #fff;">Wireless Controller (WLC)</option>
+                                          <option value="Modem" style="background: #1a1a1a; color: #fff;">Modem</option>
+                                      </optgroup>
+                                      <optgroup label="Servers & Databases" style="background: #222; color: #aaa; font-weight: bold;">
+                                          <option value="Server" style="background: #1a1a1a; color: #fff;">Server</option>
+                                          <option value="Hypervisor" style="background: #1a1a1a; color: #fff;">Hypervisor</option>
+                                          <option value="Virtual Machine" style="background: #1a1a1a; color: #fff;">Virtual Machine</option>
+                                          <option value="Database" style="background: #1a1a1a; color: #fff;">Database</option>
+                                      </optgroup>
+                                      <optgroup label="Infrastructure & Storage" style="background: #222; color: #aaa; font-weight: bold;">
+                                          <option value="Storage/NAS" style="background: #1a1a1a; color: #fff;">Storage/NAS</option>
+                                          <option value="UPS" style="background: #1a1a1a; color: #fff;">UPS</option>
+                                          <option value="PDU" style="background: #1a1a1a; color: #fff;">PDU</option>
+                                          <option value="Access Point" style="background: #1a1a1a; color: #fff;">Access Point</option>
+                                      </optgroup>
+                                      <optgroup label="Endpoints & Peripherals" style="background: #222; color: #aaa; font-weight: bold;">
+                                          <option value="Workstation" style="background: #1a1a1a; color: #fff;">Workstation</option>
+                                          <option value="Laptop" style="background: #1a1a1a; color: #fff;">Laptop</option>
+                                          <option value="Thin Client" style="background: #1a1a1a; color: #fff;">Thin Client</option>
+                                          <option value="VoIP Phone" style="background: #1a1a1a; color: #fff;">VoIP Phone</option>
+                                          <option value="Printer" style="background: #1a1a1a; color: #fff;">Printer</option>
+                                      </optgroup>
+                                      <optgroup label="Security, IoT & Other" style="background: #222; color: #aaa; font-weight: bold;">
+                                          <option value="IP Camera" style="background: #1a1a1a; color: #fff;">IP Camera</option>
+                                          <option value="Door Access Control" style="background: #1a1a1a; color: #fff;">Door Access Control</option>
+                                          <option value="Environmental Sensor" style="background: #1a1a1a; color: #fff;">Environmental Sensor</option>
+                                          <option value="IoT Device" style="background: #1a1a1a; color: #fff;">IoT Device</option>
+                                          <option value="Device" style="background: #1a1a1a; color: #fff;">Device</option>
+                                      </optgroup>
+                                </select>
+                            </div>
+                            <div class="col-5">
+                                <label class="form-label text-secondary" style="font-size: 0.85rem; font-weight: 500;">Check Interval (s)</label>
+                                <input type="number" min="1" class="form-control bg-transparent text-white" id="newDeviceInterval" value="1" style="border-color: #333; box-shadow: none;">
+                            </div>
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label text-secondary" style="font-size: 0.85rem; font-weight: 500;">Remark (Optional tooltip)</label>
+                            <input type="text" class="form-control bg-transparent text-white" id="newDeviceRemark" style="border-color: #333; box-shadow: none;" placeholder="Hover note...">
+                        </div>
+                        
+                        <div class="row g-3 mb-3">
+                            <div class="col-4">
+                                <label class="form-label text-secondary" style="font-size: 0.85rem; font-weight: 500;">Site</label>
+                                <input type="text" class="form-control bg-transparent text-white" id="newDeviceSite" style="border-color: #333; box-shadow: none;" placeholder="e.g. HQ">
+                            </div>
+                            <div class="col-4">
+                                <label class="form-label text-secondary" style="font-size: 0.85rem; font-weight: 500;">Location</label>
+                                <input type="text" class="form-control bg-transparent text-white" id="newDeviceLocation" style="border-color: #333; box-shadow: none;" placeholder="e.g. Server Room 1">
+                            </div>
+                            <div class="col-4">
+                                <label class="form-label text-secondary" style="font-size: 0.85rem; font-weight: 500;">Rack</label>
+                                <input type="text" class="form-control bg-transparent text-white" id="newDeviceRack" style="border-color: #333; box-shadow: none;" placeholder="e.g. A2">
+                            </div>
+                        </div>
+                        <div class="row g-3 mb-3">
+                            <div class="col-6">
+                                <label class="form-label text-secondary" style="font-size: 0.85rem; font-weight: 500;">Vendor</label>
+                                <input type="text" class="form-control bg-transparent text-white" id="newDeviceVendor" style="border-color: #333; box-shadow: none;" placeholder="e.g. Cisco">
+                            </div>
+                            <div class="col-6">
+                                <label class="form-label text-secondary" style="font-size: 0.85rem; font-weight: 500;">Model</label>
+                                <input type="text" class="form-control bg-transparent text-white" id="newDeviceModel" style="border-color: #333; box-shadow: none;" placeholder="e.g. Catalyst 9300">
+                            </div>
+                        </div>
+
+                        <hr style="border-color: #333;">
+                        <h6 class="text-white mb-3" style="font-size: 0.95rem;">SNMP Configuration (Optional)</h6>
+                        <div class="mb-3">
+                            <label class="form-label text-secondary" style="font-size: 0.85rem; font-weight: 500;">Version</label>
+                            <select class="form-select bg-transparent text-white" id="newDeviceSnmpVersion" style="border-color: #333; box-shadow: none;" onchange="toggleSnmpFields()">
+                                <option value="None" style="background: #1a1a1a; color: #fff;">None</option>
+                                <option value="v2c" style="background: #1a1a1a; color: #fff;">v2c</option>
+                                <option value="v3" style="background: #1a1a1a; color: #fff;">v3</option>
+                            </select>
+                        </div>
+                        
+                        <div id="snmpV2Fields" style="display: none;">
+                            <div class="mb-3">
+                                <label class="form-label text-secondary" style="font-size: 0.85rem; font-weight: 500;">Community String</label>
+                                <input type="text" class="form-control bg-transparent text-white" id="newDeviceSnmpCommunity" style="border-color: #333; box-shadow: none;" placeholder="public">
+                            </div>
+                        </div>
+
+                        <div id="snmpV3Fields" style="display: none;">
+                            <div class="mb-3">
+                                <label class="form-label text-secondary" style="font-size: 0.85rem; font-weight: 500;">Username</label>
+                                <input type="text" class="form-control bg-transparent text-white" id="newDeviceSnmpUser" style="border-color: #333; box-shadow: none;">
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label text-secondary" style="font-size: 0.85rem; font-weight: 500;">Auth Password</label>
+                                <input type="password" class="form-control bg-transparent text-white" id="newDeviceSnmpAuth" style="border-color: #333; box-shadow: none;">
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label text-secondary" style="font-size: 0.85rem; font-weight: 500;">Priv Password</label>
+                                <input type="password" class="form-control bg-transparent text-white" id="newDeviceSnmpPriv" style="border-color: #333; box-shadow: none;">
+                            </div>
+                        </div>
+
+                        <button type="submit" class="btn btn-primary w-100 py-2 fw-bold mt-2" style="border-radius: 8px;">Save Device</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade" id="deleteModal" tabindex="-1">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content widget-card border-0">
+                <div class="modal-header border-0 pb-0">
+                    <h5 class="modal-title">Confirm Delete</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="mb-0">Are you sure you want to delete this device? This action cannot be undone.</p>
+                </div>
+                <div class="modal-footer border-0 pt-0">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal" style="border-radius: 50px;">Cancel</button>
+                    <button type="button" class="btn btn-danger" id="confirmDeleteBtn" style="border-radius: 50px;">Delete</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Add Topology Tab Modal -->
+    <div class="modal fade" id="addTopologyTabModal" tabindex="-1">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content widget-card border-0">
+                <div class="modal-header border-0 pb-0">
+                    <h5 class="modal-title">New Topology Tab</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="addTopologyTabForm">
+                        <div class="mb-3">
+                            <label class="form-label text-secondary">Tab Name</label>
+                            <input type="text" class="form-control bg-transparent text-white border-secondary shadow-none" id="newTopologyTabName" required autocomplete="off">
+                        </div>
+                        <div class="d-flex justify-content-end gap-2 mt-4">
+                            <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal" style="border-radius: 50px;">Cancel</button>
+                            <button type="submit" class="btn btn-primary" style="border-radius: 50px;">Create Tab</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Generic Confirm Modal -->
+    <div class="modal fade" id="confirmModal" tabindex="-1">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content widget-card border-0">
+                <div class="modal-header border-0 pb-0">
+                    <h5 class="modal-title" id="confirmModalTitle">Confirm Action</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="text-secondary" id="confirmModalBody">Are you sure?</p>
+                    <div class="d-flex justify-content-end gap-2 mt-4">
+                        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal" style="border-radius: 50px;">Cancel</button>
+                        <button type="button" class="btn btn-danger" id="confirmModalBtn" style="border-radius: 50px;">Confirm</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Topology Add Node Modal -->
+    <div class="modal fade" id="addTopologyNodeModal" tabindex="-1">
+        <div class="modal-dialog modal-dialog-centered modal-lg">
+            <div class="modal-content widget-card border-0">
+                <div class="modal-header border-0 pb-0">
+                    <h5 class="modal-title">Add Device to Map</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" id="closeAddNodeModal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <div class="input-group input-group-sm">
+                            <input type="text" class="form-control" id="searchTopologyDevice" placeholder="Search Devices" style="background: rgba(0,0,0,0.2); border-color: #333; color: white;" autocomplete="off">
+                            <button class="btn btn-outline-secondary" style="border-color: #333 !important; color: #888;" type="button" onclick="document.getElementById('searchTopologyDevice').value=''; document.getElementById('searchTopologyDevice').dispatchEvent(new Event('input'))" title="Clear Search">
+                                <i class="bi bi-x"></i>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="list-group" id="topologyDeviceList" style="max-height: 400px; overflow-y: auto; background: transparent;">
+                        <!-- Device items injected here -->
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===== Discover LAN Modal ===== -->
+    <div class="modal fade" id="discoverLanModal" tabindex="-1" aria-hidden="true" data-bs-backdrop="static">
+        <div class="modal-dialog modal-dialog-centered modal-lg">
+            <div class="modal-content" style="background-color: var(--bg-card); border: 1px solid #1f1f1f; border-radius: 12px;">
+                <div class="modal-header border-bottom" style="border-color: #222 !important;">
+                    <h5 class="modal-title text-white fw-bold"><i class="bi bi-search me-2 text-primary"></i>Discover LAN Devices</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body p-4" style="min-height: 250px;">
+                    <div id="discoverState0" class="text-center py-5">
+                        <div class="spinner-border text-primary mb-3" role="status" style="width: 3rem; height: 3rem;"></div>
+                        <h5 class="text-white">Auto-Detecting Local Subnets...</h5>
+                        <p class="text-secondary">Scanning network interfaces</p>
+                    </div>
+                    <div id="discoverState1" class="d-none">
+                        <p class="text-secondary mb-4">Select an auto-detected subnet or enter one manually to perform a deep discovery scan.</p>
+                        <div class="mb-4">
+                            <label class="form-label text-secondary" style="font-size: 0.85rem; font-weight: 500;">Target Subnet</label>
+                            <input type="text" class="form-control bg-transparent text-white py-2" id="discoverSubnet" list="autoDetectedSubnets" placeholder="e.g. 192.168.1.0/24" style="border-color: #333; box-shadow: none;">
+                            <datalist id="autoDetectedSubnets"></datalist>
+                        </div>
+                        <button class="btn btn-primary w-100 py-2 fw-bold" id="btnStartDiscovery" style="border-radius: 8px;">Start Deep Scan</button>
+                    </div>
+                    <div id="discoverState2" class="text-center py-5 d-none">
+                        <div class="progress mb-3" style="height: 6px; background-color: #222; border-radius: 3px;">
+                            <div class="progress-bar progress-bar-striped progress-bar-animated bg-primary" id="discoveryProgressBar" role="progressbar" style="width: 0%"></div>
+                        </div>
+                        <h5 class="text-white">Scanning...</h5>
+                        <p class="text-secondary">Sending ARP requests and pinging hosts</p>
+                    </div>
+                    <div id="discoverState3" class="d-none">
+                        <div class="d-flex justify-content-between align-items-center mb-3">
+                            <h6 class="text-white mb-0">Discovered Devices (<span id="discoveredCount">0</span>)</h6>
+                            <span class="badge bg-success bg-opacity-25 text-success border border-success">Scan Complete</span>
+                        </div>
+                        <div class="table-responsive" style="max-height: 300px; overflow-y: auto; border: 1px solid #1f1f1f; border-radius: 8px;">
+                            <table class="table table-dark table-hover table-sm align-middle mb-0 w-100" style="--bs-table-bg: transparent;">
+                                <thead style="position: sticky; top: 0; background-color: var(--bg-card); z-index: 1;">
+                                    <tr>
+                                        <th class="ps-3" style="width: 40px;"><input class="form-check-input bg-transparent border-secondary shadow-none" type="checkbox" id="discoverSelectAll"></th>
+                                        <th class="text-secondary" style="font-weight: 500; font-size: 0.8rem;">IP Address</th>
+                                        <th class="text-secondary" style="font-weight: 500; font-size: 0.8rem;">Hostname</th>
+                                        <th class="text-secondary" style="font-weight: 500; font-size: 0.8rem;">Manufacturer</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="discoverResultsList"></tbody>
+                            </table>
+                        </div>
+                        <div class="mt-4 d-flex justify-content-end gap-2">
+                            <button class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+                            <button class="btn btn-primary" id="btnImportDiscovered">Import Selected Devices</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===== Device Detail Offcanvas ===== -->
+    <div class="offcanvas offcanvas-end text-bg-dark" tabindex="-1" id="deviceDetailPanel" style="width: 450px; border-left: 1px solid #1f1f1f; background-color: var(--bg-card) !important;">
+        <div class="offcanvas-header border-bottom" style="border-color: #222 !important; padding: 20px 24px;">
+            <div>
+                <h5 class="offcanvas-title fw-bold text-white mb-1" id="detailDeviceName">Device Name</h5>
+                <span class="badge bg-transparent border border-secondary text-secondary" style="font-weight: 500;" id="detailDeviceBadge"></span>
+            </div>
+            <button type="button" class="btn-close btn-close-white shadow-none" data-bs-dismiss="offcanvas" aria-label="Close"></button>
+        </div>
+        <div class="offcanvas-body" style="padding: 24px;">
+            <div class="mb-4">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <h6 class="text-secondary mb-0" id="vitalsHeaderTitle" style="font-size: 0.8rem; letter-spacing: 1px;">LIVE VITALS</h6>
+                    <select id="vitalsTimeFilter" class="form-select form-select-sm bg-transparent text-secondary border-secondary shadow-none" style="width: auto; font-size: 0.75rem; padding-top: 2px; padding-bottom: 2px;">
+                        <option value="24h" style="background: #1a1a1a;" selected>24h Avg</option>
+                        <option value="7d" style="background: #1a1a1a;">7d Avg</option>
+                        <option value="30d" style="background: #1a1a1a;">30d Avg</option>
+                    </select>
+                </div>
+                <div class="d-flex gap-2">
+                    <div class="flex-fill bg-black p-3 rounded text-center border" style="border-color: #222 !important;">
+                        <div class="text-secondary mb-1" style="font-size: 0.7rem;">LATENCY</div>
+                        <div class="fw-bold fs-5 text-white" id="detailLatency">--</div>
+                    </div>
+                    <div class="flex-fill bg-black p-3 rounded text-center border" style="border-color: #222 !important;">
+                        <div class="text-secondary mb-1" style="font-size: 0.7rem;">LOSS</div>
+                        <div class="fw-bold fs-5 text-white" id="detailLoss">--</div>
+                    </div>
+                    <div class="flex-fill bg-black p-3 rounded text-center border" style="border-color: #222 !important;">
+                        <div class="text-secondary mb-1" style="font-size: 0.7rem;">UPTIME</div>
+                        <div class="fw-bold fs-5 text-white" id="detailUptime">--</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="mb-4" id="snmpDetailsSection" style="display: none;">
+                <h6 class="text-secondary mb-3" style="font-size: 0.8rem; letter-spacing: 1px;">SNMP SYSTEM INFO</h6>
+                <div class="bg-black p-3 rounded border" style="border-color: #222 !important;">
+                    <div class="text-secondary mb-1" style="font-size: 0.75rem;">SYSTEM NAME</div>
+                    <div class="text-white mb-3" id="detailSnmpName" style="font-size: 0.9rem;">--</div>
+                    <div class="text-secondary mb-1" style="font-size: 0.75rem;">CONTACT</div>
+                    <div class="text-white mb-3" id="detailSnmpContact" style="font-size: 0.9rem;">--</div>
+                    <div class="text-secondary mb-1" style="font-size: 0.75rem;">LOCATION</div>
+                    <div class="text-white mb-3" id="detailSnmpLocation" style="font-size: 0.9rem;">--</div>
+                    <div class="text-secondary mb-1" style="font-size: 0.75rem;">SYSTEM UPTIME</div>
+                    <div class="text-white mb-3" id="detailSnmpUptime" style="font-size: 0.9rem;">--</div>
+                    <div class="text-secondary mb-1" style="font-size: 0.75rem;">DESCRIPTION</div>
+                    <div class="text-white mb-3" id="detailSnmpDescr" style="font-size: 0.85rem; font-family: monospace; white-space: pre-wrap;">--</div>
+                    <div id="snmpAssetSection" style="display: none;">
+                        <div id="snmpClientCountBlock">
+                            <div class="text-secondary mb-1" style="font-size: 0.75rem;">CLIENT COUNT (WLC)</div>
+                            <div class="text-white mb-3" id="detailSnmpClientCount" style="font-size: 0.9rem;">--</div>
+                        </div>
+                        <div id="snmpApCountBlock">
+                            <div class="text-secondary mb-1" style="font-size: 0.75rem;">AP COUNT (WLC)</div>
+                            <div class="text-white mb-3" id="detailSnmpApCount" style="font-size: 0.9rem;">--</div>
+                        </div>
+                        <div id="snmpSerialNumBlock">
+                            <div class="text-secondary mb-1" style="font-size: 0.75rem;">SERIAL NUMBER</div>
+                            <div class="text-white" id="detailSnmpSerialNum" style="font-size: 0.9rem;">--</div>
+                        </div>
+                        <div id="dynamicSnmpFields"></div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="mb-4">
+                <h6 class="text-secondary mb-3" style="font-size: 0.8rem; letter-spacing: 1px;">CONFIGURATION</h6>
+                <form>
+                    <div class="mb-3">
+                        <label class="form-label text-secondary small mb-1">Device Name</label>
+                        <input type="text" id="editName" class="form-control bg-transparent text-white shadow-none" style="border-color: #333 !important;">
+                    </div>
+                    <div class="row g-3 mb-3">
+                        <div class="col-12">
+                            <label class="form-label text-secondary small mb-1">IP Address</label>
+                            <input type="text" id="editIp" class="form-control bg-transparent text-white shadow-none" style="border-color: #333 !important;">
+                        </div>
+                        <div class="col-7">
+                            <label class="form-label text-secondary small mb-1">Device Type</label>
+                            <select id="editType" class="form-select bg-transparent text-white shadow-none" style="border-color: #333 !important;">
+                                  <optgroup label="Core Network" style="background: #222; color: #aaa; font-weight: bold;">
+                                      <option value="Router" style="background: #1a1a1a;">Router</option>
+                                      <option value="Switch" style="background: #1a1a1a;">Switch</option>
+                                      <option value="Gateway" style="background: #1a1a1a;">Gateway</option>
+                                      <option value="Firewall" style="background: #1a1a1a;">Firewall</option>
+                                      <option value="Security Appliance" style="background: #1a1a1a;">Security Appliance</option>
+                                      <option value="Load Balancer" style="background: #1a1a1a;">Load Balancer</option>
+                                      <option value="Controller" style="background: #1a1a1a;">Controller</option>
+                                      <option value="Wireless Controller (WLC)" style="background: #1a1a1a;">Wireless Controller (WLC)</option>
+                                      <option value="Modem" style="background: #1a1a1a;">Modem</option>
+                                  </optgroup>
+                                  <optgroup label="Servers & Databases" style="background: #222; color: #aaa; font-weight: bold;">
+                                      <option value="Server" style="background: #1a1a1a;">Server</option>
+                                      <option value="Hypervisor" style="background: #1a1a1a;">Hypervisor</option>
+                                      <option value="Virtual Machine" style="background: #1a1a1a;">Virtual Machine</option>
+                                      <option value="Database" style="background: #1a1a1a;">Database</option>
+                                  </optgroup>
+                                  <optgroup label="Infrastructure & Storage" style="background: #222; color: #aaa; font-weight: bold;">
+                                      <option value="Storage/NAS" style="background: #1a1a1a;">Storage/NAS</option>
+                                      <option value="UPS" style="background: #1a1a1a;">UPS</option>
+                                      <option value="PDU" style="background: #1a1a1a;">PDU</option>
+                                      <option value="Access Point" style="background: #1a1a1a;">Access Point</option>
+                                  </optgroup>
+                                  <optgroup label="Endpoints & Peripherals" style="background: #222; color: #aaa; font-weight: bold;">
+                                      <option value="Workstation" style="background: #1a1a1a;">Workstation</option>
+                                      <option value="Laptop" style="background: #1a1a1a;">Laptop</option>
+                                      <option value="Thin Client" style="background: #1a1a1a;">Thin Client</option>
+                                      <option value="VoIP Phone" style="background: #1a1a1a;">VoIP Phone</option>
+                                      <option value="Printer" style="background: #1a1a1a;">Printer</option>
+                                  </optgroup>
+                                  <optgroup label="Security, IoT & Other" style="background: #222; color: #aaa; font-weight: bold;">
+                                      <option value="IP Camera" style="background: #1a1a1a;">IP Camera</option>
+                                      <option value="Door Access Control" style="background: #1a1a1a;">Door Access Control</option>
+                                      <option value="Environmental Sensor" style="background: #1a1a1a;">Environmental Sensor</option>
+                                      <option value="IoT Device" style="background: #1a1a1a;">IoT Device</option>
+                                      <option value="Device" style="background: #1a1a1a;">Device</option>
+                                  </optgroup>
+                            </select>
+                        </div>
+                        <div class="col-5">
+                            <label class="form-label text-secondary small mb-1">Check Int. (s)</label>
+                            <input type="number" min="1" id="editInterval" class="form-control bg-transparent text-white shadow-none" value="1" style="border-color: #333 !important;">
+                        </div>
+                    </div>
+                      <div class="mb-3">
+                          <label class="form-label text-secondary small mb-1">Remark (Optional tooltip)</label>
+                          <input type="text" id="editRemark" class="form-control bg-transparent text-white shadow-none" style="border-color: #333 !important;" placeholder="Hover note...">
+                      </div>
+
+                      <div class="row g-3 mb-3">
+                          <div class="col-4">
+                              <label class="form-label text-secondary small mb-1">Site</label>
+                              <input type="text" id="editSite" class="form-control bg-transparent text-white shadow-none" style="border-color: #333 !important;" placeholder="HQ">
+                          </div>
+                          <div class="col-4">
+                              <label class="form-label text-secondary small mb-1">Location</label>
+                              <input type="text" id="editLocation" class="form-control bg-transparent text-white shadow-none" style="border-color: #333 !important;" placeholder="Server Rm 1">
+                          </div>
+                          <div class="col-4">
+                              <label class="form-label text-secondary small mb-1">Rack</label>
+                              <input type="text" id="editRack" class="form-control bg-transparent text-white shadow-none" style="border-color: #333 !important;" placeholder="A2">
+                          </div>
+                      </div>
+                      <div class="row g-3 mb-3">
+                          <div class="col-6">
+                              <label class="form-label text-secondary small mb-1">Vendor</label>
+                              <input type="text" id="editVendor" class="form-control bg-transparent text-white shadow-none" style="border-color: #333 !important;" placeholder="Cisco">
+                          </div>
+                          <div class="col-6">
+                              <label class="form-label text-secondary small mb-1">Model</label>
+                              <input type="text" id="editModel" class="form-control bg-transparent text-white shadow-none" style="border-color: #333 !important;" placeholder="Catalyst">
+                          </div>
+                      </div>
+
+                      <hr style="border-color: #333;">
+                      <h6 class="text-secondary small mb-3" style="letter-spacing: 1px;">SNMP CONFIGURATION</h6>
+                      
+                      <div class="mb-3">
+                          <label class="form-label text-secondary small mb-1">Version</label>
+                          <select class="form-select bg-transparent text-white shadow-none" id="editSnmpVersion" style="border-color: #333 !important;" onchange="toggleSnmpEditFields()">
+                              <option value="None" style="background: #1a1a1a;">None</option>
+                              <option value="v2c" style="background: #1a1a1a;">v2c</option>
+                              <option value="v3" style="background: #1a1a1a;">v3</option>
+                          </select>
+                      </div>
+                      
+                      <div id="editSnmpV2Fields" style="display: none;">
+                          <div class="mb-3">
+                              <label class="form-label text-secondary small mb-1">Community String</label>
+                              <input type="text" id="editSnmpCommunity" class="form-control bg-transparent text-white shadow-none" style="border-color: #333 !important;" placeholder="public">
+                          </div>
+                      </div>
+
+                      <div id="editSnmpV3Fields" style="display: none;">
+                          <div class="mb-3">
+                              <label class="form-label text-secondary small mb-1">Username</label>
+                              <input type="text" id="editSnmpUser" class="form-control bg-transparent text-white shadow-none" style="border-color: #333 !important;">
+                          </div>
+                          <div class="mb-3">
+                              <label class="form-label text-secondary small mb-1">Auth Password</label>
+                              <input type="password" id="editSnmpAuth" class="form-control bg-transparent text-white shadow-none" style="border-color: #333 !important;">
+                          </div>
+                          <div class="mb-3">
+                              <label class="form-label text-secondary small mb-1">Priv Password</label>
+                              <input type="password" id="editSnmpPriv" class="form-control bg-transparent text-white shadow-none" style="border-color: #333 !important;">
+                          </div>
+                      </div>
+
+                  </form>
+            </div>
+            <div class="mt-5 pt-3 border-top" style="border-color: #222 !important;">
+                <button type="button" id="btnSaveConfig" class="btn btn-primary w-100 mb-2 py-2" style="border-radius: 6px;">Save Configuration</button>
+                <div class="d-flex gap-2">
+                    <button type="button" id="btnToggleMonitoring" class="btn btn-outline-warning w-100 py-2" style="border-radius: 6px;">Pause Monitoring</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- JS Dependencies (loaded once, never re-parsed) -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+    <script type="text/javascript" src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
+    <script src="/sse.js"></script>
+    <script src="/app.js"></script>
+
+    <!-- Change Password Modal -->
+    <div class="modal fade" id="changePwModal" tabindex="-1">
+        <div class="modal-dialog modal-sm modal-dialog-centered">
+            <div class="modal-content" style="background: #1e1e1e; border: 1px solid #333;">
+                <div class="modal-header border-0 pb-0">
+                    <h5 class="modal-title text-white">Change Admin Password</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label text-secondary small">Current Password</label>
+                        <input type="password" class="form-control bg-transparent text-white border-secondary shadow-none" id="changePwCurrent" style="border-color: #333 !important;" autocomplete="off">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label text-secondary small">New Password</label>
+                        <input type="password" class="form-control bg-transparent text-white border-secondary shadow-none" id="changePwNew" style="border-color: #333 !important;" autocomplete="off" minlength="4">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label text-secondary small">Confirm New Password</label>
+                        <input type="password" class="form-control bg-transparent text-white border-secondary shadow-none" id="changePwConfirm" style="border-color: #333 !important;" autocomplete="off" minlength="4" onkeydown="if(event.key==='Enter') doChangePassword()">
+                    </div>
+                    <div id="changePwError" class="text-danger small d-none mb-2">Failed to change password</div>
+                    <div id="changePwSuccess" class="text-success small d-none mb-2">Password changed successfully</div>
+                    <button class="btn btn-primary w-100" onclick="doChangePassword()" id="changePwBtn">Change Password</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Login Modal -->
+    <div class="modal fade" id="loginModal" tabindex="-1">
+        <div class="modal-dialog modal-sm modal-dialog-centered">
+            <div class="modal-content" style="background: #1e1e1e; border: 1px solid #333;">
+                <div class="modal-header border-0 pb-0">
+                    <h5 class="modal-title text-white">Authentication Required</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label text-secondary small">Admin Password</label>
+                        <input type="password" class="form-control bg-transparent text-white border-secondary shadow-none" id="loginPassword" style="border-color: #333 !important;" autocomplete="off" onkeydown="if(event.key==='Enter') doLogin()">
+                    </div>
+                    <div id="loginError" class="text-danger small d-none mb-2">Invalid password</div>
+                    <button class="btn btn-primary w-100" onclick="doLogin()" id="loginBtn">Login</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

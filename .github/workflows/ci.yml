@@ -1,0 +1,67 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install ruff
+        run: pip install ruff
+
+      - name: ruff check
+        run: ruff check .
+
+      - name: ruff format check
+        run: ruff format --check .
+
+      - name: Syntax check all source files
+        run: |
+          python -m py_compile main.py
+          for f in core/*.py api/*.py database/*.py reporting/*.py; do
+            python -m py_compile "$f"
+          done
+
+  build-win:
+    runs-on: windows-latest
+    # Only build on push to main (skip PRs to save minutes)
+    if: github.event_name == 'push'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Build with PyInstaller
+        run: pyinstaller --clean NetworkMonitor_Win7.spec
+
+      - name: Verify executable exists
+        run: |
+          if (Test-Path "dist/NetworkMonitor_Win7.exe") {
+            Write-Output "Build successful: dist/NetworkMonitor_Win7.exe"
+          } else {
+            Write-Output "::error::Build failed — exe not found"
+            exit 1
+          }
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: NetworkMonitor_Win7
+          path: dist/NetworkMonitor_Win7.exe

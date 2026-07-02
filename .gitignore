@@ -1,0 +1,68 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+*.spec
+*.egg
+
+# Virtual environments
+venv/
+venv_uv/
+venv_win7/
+
+# Database
+*.db
+*.db-shm
+*.db-wal
+db_backups/
+archives/
+
+# Environment and local config
+.env
+
+# Logs and data
+logs/
+crash.log
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+Thumbs.db
+.DS_Store
+
+# PyInstaller
+*.manifest
+*.exe
+!*.spec
+
+# Generated / temp
+scratch/
+reports/*.pdf
+screenshots/
+!screenshots/dashboard.png
+!screenshots/wall.png
+!screenshots/device-management.png
+!screenshots/device-detail.png
+!screenshots/network-topology.png
+!screenshots/alert-history.png
+!screenshots/performance-report.png
+!screenshots/discover-lan.png
+
+# Logo - user provides their own (keep .gitkeep for folder structure)
+logo/*
+!logo/.gitkeep
+
+# Development tools — not committed
+.*/
+!.github/
+memory/
+rules/
+*.toml
+*_?.md
+setup-*.ps1
+launch*.ps1
+launch.bat

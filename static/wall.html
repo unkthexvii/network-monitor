@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Network Monitoring - Wall</title>
+  <link rel="icon" type="image/x-icon" href="/favicon.ico">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css" rel="stylesheet">
+  <link href="/wall.css" rel="stylesheet">
+</head>
+<body>
+  <div id="reconnectOverlay" class="reconnect-overlay hidden">
+    <div class="spinner"></div>
+    <div class="reconnect-text">CONNECTION LOST — RECONNECTING...</div>
+  </div>
+
+  <div class="wall">
+    <header class="wall-header">
+      <div class="brand">
+        <img class="brand-logo" src="/api/logo" alt="Logo" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
+        <div class="brand-fallback" style="display: none; width: 40px; height: 40px; background-color: #fff; color: #000; border-radius: 50%; align-items: center; justify-content: center; font-weight: 900; font-size: 1.2rem;">IN</div>
+        <div class="brand-text">
+          <span class="brand-name">Network Monitoring</span>
+          <span class="brand-sub">Real-Time Operations</span>
+        </div>
+      </div>
+      <div class="header-right" style="display: flex; align-items: center; gap: 20px;">
+        <a href="/dashboard" title="Back to Dashboard" style="color: var(--text-secondary); text-decoration: none; font-size: 1.2rem; transition: color 0.2s;" onmouseover="this.style.color='#fff'" onmouseout="this.style.color='var(--text-secondary)'"><i class="bi bi-box-arrow-left"></i></a>
+        <span id="clock" class="clock">--:--:--</span>
+      </div>
+    </header>
+
+    <main class="wall-main">
+      <div id="loadingSkeleton" class="loading-skeleton">
+        <div class="skel-hero"></div>
+        <div class="skel-row"></div>
+        <div class="skel-row"></div>
+        <div class="skel-row"></div>
+      </div>
+
+      <div id="hero" class="hero hidden">
+        <div id="heroNumber" class="hero-number">–</div>
+        <div id="heroLabel" class="hero-label">Devices Offline</div>
+      </div>
+
+      <div id="summary" class="summary"></div>
+
+      <section id="listSection" class="list-section hidden">
+        <div class="list-heading">
+          <span>Active Outages</span>
+          <span>Time Detected</span>
+        </div>
+        <div id="outageList" class="outage-list"></div>
+      </section>
+
+      <div id="placeholder" class="placeholder hidden">
+        <div class="big">All Systems Operational</div>
+        <div class="small">Monitoring continuously. Zero outages detected.</div>
+      </div>
+    </main>
+
+    <aside class="wall-rail">
+      <div class="rail-head">
+        <div class="rail-title">
+          <span>Event Feed</span>
+          <span id="railCount" class="count">0</span>
+        </div>
+      </div>
+      <div id="railFeed" class="rail-feed">
+        <div class="placeholder small" style="margin: 40px;">Loading feed...</div>
+      </div>
+    </aside>
+  </div>
+  <script src="/sse.js"></script>
+  <script src="/wall.js"></script>
+</body>
+</html>

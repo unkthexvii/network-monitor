@@ -1,0 +1,13 @@
+fastapi>=0.100.0,<0.125.0
+uvicorn>=0.22.0,<0.34.0
+sqlalchemy>=2.0.0,<2.1.0
+aiosqlite>=0.19.0,<0.21.0
+apscheduler>=3.9.0,<4.0.0
+icmplib>=3.0,<4.0
+fpdf2>=2.7.0,<2.8.4
+sse-starlette>=1.0.0,<2.2
+pydantic>=2.0,<2.5
+pyinstaller==5.13.2
+cryptography==38.0.4
+pysnmp-lextudio==5.0.28
+setuptools==68.2.2
