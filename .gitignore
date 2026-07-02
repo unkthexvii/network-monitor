@@ -61,6 +61,7 @@ logo/*
 memory/
 rules/
 *.toml
+!pyproject.toml
 *_?.md
 setup-*.ps1
 launch*.ps1
