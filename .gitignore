@@ -65,3 +65,4 @@ rules/
 setup-*.ps1
 launch*.ps1
 launch.bat
+build_log.txt
