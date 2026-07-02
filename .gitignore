@@ -58,7 +58,6 @@ logo/*
 
 # Development tools — not committed
 .*/
-!.github/
 memory/
 rules/
 *.toml
