@@ -107,8 +107,8 @@ All settings are in `core/config.py`. Override via environment variables:
 | `MONITOR_OFFLINE_THRESHOLD` | `3` | Consecutive failures to declare OFFLINE |
 | `MONITOR_ONLINE_THRESHOLD` | `3` | Consecutive successes to declare ONLINE |
 | `MONITOR_RETENTION_DAYS` | `7` | Raw ping data retention |
-| `MONITOR_STAT_RETENTION_DAYS` | `30` | Minute stats retention |
-| `MONITOR_EVENT_RETENTION_DAYS` | `365` | Alert history retention |
+| `MONITOR_STAT_RETENTION_DAYS` | `7` | Minute stats retention |
+| `MONITOR_EVENT_RETENTION_DAYS` | `90` | Alert history retention |
 | `MONITOR_DATABASE_URL` | `sqlite+aiosqlite:///monitor.db` | Database path |
 
 ---
