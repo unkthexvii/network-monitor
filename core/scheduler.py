@@ -253,10 +253,22 @@ async def run_wal_checkpoint():
     from sqlalchemy import text
     try:
         async with async_session() as session:
-            await session.execute(text("PRAGMA wal_checkpoint(TRUNCATE)"))
-            logger.debug("Executed SQLite WAL checkpoint (TRUNCATE)")
+            await session.execute(text("PRAGMA wal_checkpoint(PASSIVE)"))
+            logger.debug("Executed SQLite WAL checkpoint (PASSIVE)")
     except Exception as e:
         logger.error(f"WAL checkpoint failed: {e}", exc_info=True)
+
+
+async def vacuum_db():
+    """Weekly VACUUM to reclaim disk space after cleanup deletes old rows."""
+    from sqlalchemy import text
+    try:
+        async with async_session() as session:
+            await session.execute(text("PRAGMA optimize"))
+            await session.execute(text("VACUUM"))
+            logger.info("Database vacuum completed (space reclaimed)")
+    except Exception as e:
+        logger.error(f"Database vacuum failed: {e}", exc_info=True)
 
 
 async def purge_logs():
@@ -335,11 +347,14 @@ def start_scheduler():
     # Daily database cleanup
     scheduler.add_job(cleanup_old_data, 'interval', days=1, id='db_cleanup')
 
+    # Weekly vacuum to reclaim disk space
+    scheduler.add_job(vacuum_db, 'interval', weeks=1, id='db_vacuum')
+
     # Hourly log file cleanup (rotated backups older than 24h)
     scheduler.add_job(purge_logs, 'interval', hours=1, id='log_purge')
 
     scheduler.start()
-    logger.info("Scheduler started: ping_poller (1s), minute_aggregator (1m), cache_refresh (30s), wal_checkpoint (5m), snmp_poller (5m), log_purge (1h)")
+    logger.info("Scheduler started: ping_poller (1s), minute_aggregator (1m), cache_refresh (30s), wal_checkpoint (5m), snmp_poller (5m), db_vacuum (1w), log_purge (1h)")
 
 def shutdown_scheduler():
     scheduler.shutdown()
