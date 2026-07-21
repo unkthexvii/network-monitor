@@ -12,7 +12,7 @@ from typing import Optional
 from database.session import get_db
 from database.models import Device, MinuteStat, Alert
 from reporting.pdf_generator import generate_pdf_report
-from core.utils import format_alert_message, get_timeframe_bounds
+from core.utils import get_timeframe_bounds
 from core.cache import report_cache
 
 logger = logging.getLogger(__name__)

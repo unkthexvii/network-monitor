@@ -53,7 +53,7 @@ async def _get_federated_db_connection(start_time: datetime, end_time: datetime)
         return db, attached_dbs
     except Exception as e:
         await db.close()
-        raise e
+        raise
 
 
 # ── Internal query helpers (accept a shared connection, don't close it) ──
@@ -118,10 +118,11 @@ async def _query_alerts(db: aiosqlite.Connection, attached_dbs: list, device_id:
     for attached in attached_dbs:
         all_queries.append(f"SELECT id, device_id, alert_type, message, created_at FROM \"{attached}\".alerts WHERE device_id = ? AND created_at >= ? AND created_at <= ?")
     
-    full_query = f"SELECT * FROM ({' UNION ALL '.join(all_queries)}) ORDER BY created_at DESC LIMIT {limit}"
+    full_query = f"SELECT * FROM ({' UNION ALL '.join(all_queries)}) ORDER BY created_at DESC LIMIT ?"
     
     alerts = []
-    async with db.execute(full_query, params * len(all_queries)) as cursor:
+    all_params = params * len(all_queries) + [limit]
+    async with db.execute(full_query, all_params) as cursor:
         async for row in cursor:
             alerts.append(AlertRow(row))
     return alerts

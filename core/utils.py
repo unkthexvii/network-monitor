@@ -78,44 +78,6 @@ def get_timeframe_bounds(time_filter: str, start_date: Optional[str] = None, end
         
     return start_time, end_time, blocks_count, block_delta, block_label
 
-def format_alert_message(alert_index: int, all_alerts: list) -> str:
-    """
-    Given an index and a list of alerts (sorted descending by created_at),
-    returns a meaningful formatted string.
-    Calculates duration for ONLINE (vs OFFLINE) and RESUMED (vs PAUSED).
-    """
-    alert = all_alerts[alert_index]
-    
-    if alert.alert_type == 'ONLINE':
-        msg = "Connection Restored"
-        for prev in all_alerts[alert_index + 1:]:
-            if prev.device_id == alert.device_id:
-                if prev.alert_type == 'OFFLINE':
-                    delta = alert.created_at - prev.created_at
-                    msg += f" (Downtime: {format_time_duration(int(delta.total_seconds()))})"
-                break
-        return msg
-        
-    elif alert.alert_type == 'OFFLINE':
-        return "Connection Lost"
-        
-    elif alert.alert_type == 'RESUMED':
-        msg = "Monitoring Resumed"
-        for prev in all_alerts[alert_index + 1:]:
-            if prev.device_id == alert.device_id:
-                if prev.alert_type == 'PAUSED':
-                    delta = alert.created_at - prev.created_at
-                    msg += f" (Paused for: {format_time_duration(int(delta.total_seconds()))})"
-                break
-        return msg
-        
-    elif alert.alert_type == 'PAUSED':
-        return "Monitoring Paused"
-        
-    else:
-        return alert.message
-
-
 def build_alert_messages(alerts: list) -> list[str]:
     """
     Batch-build alert messages in O(N) time instead of O(N²).

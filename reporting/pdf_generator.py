@@ -22,7 +22,7 @@ except ImportError as e:
 
 import json
 from database.models import Device, Alert, MinuteStat, DeviceStatus
-from core.utils import format_alert_message, build_alert_messages, get_timeframe_bounds
+from core.utils import build_alert_messages, get_timeframe_bounds
 
 logger = logging.getLogger(__name__)
 

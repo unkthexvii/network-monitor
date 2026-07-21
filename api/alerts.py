@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
-from core.utils import format_alert_message, build_alert_messages, parse_utc_iso
+from core.utils import build_alert_messages, parse_utc_iso
 
 from sqlalchemy import func
 from sqlalchemy.orm import aliased

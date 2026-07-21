@@ -101,7 +101,7 @@ class DeviceUpdate(BaseModel):
     vendor: Optional[str] = None
     model: Optional[str] = None
     check_interval: Optional[int] = None
-    enabled: Optional[int] = None
+    enabled: Optional[bool] = None
     remark: Optional[str] = None
     snmp_version: Optional[str] = None
     snmp_community: Optional[str] = None
@@ -293,7 +293,8 @@ async def add_devices_bulk(devices: List[DeviceCreate], session: AsyncSession = 
             status = DeviceStatus(device_id=dev.id, status="UNKNOWN", fail_count=0)
             session.add(status)
             added_ids.append(dev.id)
-        except Exception:
+        except Exception as e:
+            logger.warning(f"Bulk import failed for device {device_data.get('ip_address')}: {e}")
             errors += 1
             continue
     

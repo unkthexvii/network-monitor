@@ -45,7 +45,6 @@ import uvicorn
 
 import logging.handlers
 import time
-import os
 
 # Ensure logs directory exists
 os.makedirs(os.path.join(APP_DIR, "logs"), exist_ok=True)
@@ -88,7 +87,7 @@ logging.getLogger("SNMPEngine").addHandler(snmp_handler)
 
 logger = logging.getLogger(__name__)
 
-from database.session import init_db
+from database.session import init_db, dispose_engine
 from core.scheduler import start_scheduler, shutdown_scheduler
 from core.alert_engine import register_notify_callback
 from core.device_cache import device_cache
@@ -138,12 +137,19 @@ async def lifespan(app: FastAPI):
     # Shutdown
     logger.info("Shutting down Scheduler...")
     shutdown_scheduler()
+    await dispose_engine()
 
 app = FastAPI(lifespan=lifespan, title="Network Monitoring System")
 
+_CORS_ORIGINS = [
+    "http://localhost",
+    "http://localhost:8000",
+    "http://127.0.0.1",
+    "http://127.0.0.1:8000",
+]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=_CORS_ORIGINS,
     allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -307,7 +313,7 @@ def force_kill_port(port=8000):
     """Force kill any process currently listening on the specified port (Windows)."""
     try:
         if os.name == 'nt':
-            result = subprocess.run(["netstat", "-ano"], capture_output=True, text=True)
+            result = subprocess.run(["netstat", "-ano"], capture_output=True, text=True, timeout=10)
             for line in result.stdout.splitlines():
                 if f":{port} " in line and "LISTENING" in line:
                     parts = line.strip().split()
@@ -315,7 +321,7 @@ def force_kill_port(port=8000):
                         pid = parts[-1]
                         if pid != "0":
                             logger.warning(f"Port {port} is in use by PID {pid}. Force killing it...")
-                            subprocess.run(["taskkill", "/F", "/PID", pid], capture_output=True)
+                            subprocess.run(["taskkill", "/F", "/PID", pid], capture_output=True, timeout=10)
                             time.sleep(1)
     except Exception as e:
         logger.error(f"Failed to clear port {port}: {e}")

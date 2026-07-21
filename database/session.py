@@ -86,3 +86,7 @@ async def init_db():
             col_name = col.split(" ")[0]
             if col_name not in existing_cols:
                 await conn.execute(text(f"ALTER TABLE device_status ADD COLUMN {col}"))
+
+async def dispose_engine():
+    """Dispose the async engine to close all pooled connections on shutdown."""
+    await engine.dispose()

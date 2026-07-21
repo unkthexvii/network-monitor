@@ -179,7 +179,6 @@ async def cleanup_old_data():
     import calendar
     import os
     import aiosqlite
-    from datetime import datetime, timezone, timedelta
     from core.config import DATABASE_URL, RAW_PING_RETENTION_DAYS, MINUTE_STAT_RETENTION_DAYS, EVENT_HISTORY_RETENTION_DAYS
 
     # Whitelist of allowed table/column names — must match the hardcoded values below.

@@ -48,7 +48,7 @@ async def fetch_snmp_data(device_ip, snmp_version, community=None, v3_user=None,
         return None
 
     try:
-        comm_masked = (community[:2] + "***") if community and len(community) > 2 else "??"
+        comm_masked = (community[:2] + "***") if community and len(community) > 2 else ("*" * len(community)) if community else "??"
         logger.info(f"SNMP TRY {device_ip} v={snmp_version} comm={comm_masked} name={device_name or '-'}")
 
         t_start = time.monotonic()
@@ -175,17 +175,17 @@ async def fetch_snmp_data(device_ip, snmp_version, community=None, v3_user=None,
                             # ── WLC client count (first match wins, skip others) ──
                             elif '14179.2.1.1.1.0' in oid:
                                 try: result['client_count'] = int(val_str)
-                                except: pass
+                                except (ValueError, TypeError) as e: logger.debug(f"SNMP parse client_count for {device_ip}: {e}")
                             elif '14179.2.1.1.1.38' in oid and 'client_count' not in result:
                                 try: result['client_count'] = int(val_str)
-                                except: pass
+                                except (ValueError, TypeError) as e: logger.debug(f"SNMP parse client_count for {device_ip}: {e}")
                             elif '9.9.618.1.8.4.0' in oid and 'client_count' not in result:
                                 try: result['client_count'] = int(val_str)
-                                except: pass
+                                except (ValueError, TypeError) as e: logger.debug(f"SNMP parse client_count for {device_ip}: {e}")
                             # ── WLC AP count ──
                             elif '14179.2.1.1.1.19' in oid:
                                 try: result['ap_count'] = int(val_str)
-                                except: pass
+                                except (ValueError, TypeError) as e: logger.debug(f"SNMP parse ap_count for {device_ip}: {e}")
                             # ── Switch/router (Cisco) ──
                             elif '9.9.109.1.1.1.1.7.1' in oid:
                                 custom_data['CPU 5min %'] = val_str
@@ -264,7 +264,10 @@ async def poll_all_devices():
                     )
                 )
                 
-            results = await asyncio.gather(*tasks, return_exceptions=True)
+            results = await asyncio.wait_for(
+                asyncio.gather(*tasks, return_exceptions=True),
+                timeout=30.0
+            )
 
             # Fetch all DeviceStatus records in chunked queries to avoid SQLite's 999-variable limit
             device_ids = [d.id for d, r in zip(devices, results) if isinstance(r, dict)]
