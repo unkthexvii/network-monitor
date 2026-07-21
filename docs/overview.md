@@ -18,7 +18,7 @@ graph TD
 
     subgraph Backend [FastAPI Backend Server]
         API[FastAPI Routers - Devices, Alerts, Dashboard, Reports, Stream]
-        Cache[In-Memory Device Cache, Ping Buffer & TTLCache (bounded)]
+        Cache["In-Memory Device Cache, Ping Buffer & TTLCache — bounded"]
         Workers[Background Threads - ICMP Engine & SNMP Engine]
         Alerts[Alert Engine - Debouncer / Evaluator]
         Sched[Scheduler - Stats Roll-up, DB Cleanup & VACUUM]
