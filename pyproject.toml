@@ -8,3 +8,7 @@ ignore = ["E501"]
 
 [tool.ruff.lint.per-file-ignores]
 "scratch/*" = ["ALL"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
