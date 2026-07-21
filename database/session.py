@@ -65,7 +65,6 @@ async def init_db():
         "sys_location VARCHAR",
         "sys_descr VARCHAR",
         "sys_uptime VARCHAR",
-        "success_count INTEGER DEFAULT 0",
         "recovery_count INTEGER DEFAULT 0",
         "client_count INTEGER",
         "ap_count INTEGER",

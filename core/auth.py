@@ -35,7 +35,7 @@ def verify_password(password: str, salt: str, stored_hash: str) -> bool:
 
 # === Session Store (in-memory) ===
 
-_SESSION_TTL = 8 * 3600  # 8 hours
+from core.config import SESSION_TTL as _SESSION_TTL
 
 
 class SessionStore:

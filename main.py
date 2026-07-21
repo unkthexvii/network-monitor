@@ -34,7 +34,6 @@ def _safe_pause():
 
 sys.excepthook = global_exception_handler
 
-import asyncio
 import logging
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
@@ -303,7 +302,6 @@ async def get_favicon():
 app.mount("/", StaticFiles(directory=STATIC_DIR, html=True), name="static")
 
 import subprocess
-import time
 
 def force_kill_port(port=8000):
     """Force kill any process currently listening on the specified port (Windows)."""

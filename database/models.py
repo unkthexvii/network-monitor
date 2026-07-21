@@ -22,7 +22,6 @@ class Device(Base):
 
     id = Column(Integer, primary_key=True)
     name = Column(String, nullable=False)
-    hostname = Column(String)
     ip_address = Column(String, unique=True, nullable=False)
     site = Column(String)
     location = Column(String)
@@ -54,7 +53,6 @@ class Device(Base):
         return {
             "id": self.id,
             "name": self.name,
-            "hostname": self.hostname,
             "ip_address": self.ip_address,
             "site": self.site,
             "location": self.location,
@@ -117,7 +115,6 @@ class DeviceStatus(Base):
     offline_since = Column(DateTime)
     fail_count = Column(Integer, default=0)
     recovery_count = Column(Integer, default=0)
-    success_count = Column(Integer, default=0)
     
     # SNMP Fetched Data
     sys_name = Column(String)
@@ -163,25 +160,6 @@ class MinuteStat(Base):
     max_latency = Column(Float)
     packet_loss = Column(Float)
     uptime_percent = Column(Float)
-
-
-class ReportJob(Base):
-    __tablename__ = 'report_jobs'
-
-    id = Column(Integer, primary_key=True)
-    report_type = Column(String)
-    schedule = Column(String)
-    enabled = Column(Integer, default=1)
-
-
-class Report(Base):
-    __tablename__ = 'reports'
-
-    id = Column(Integer, primary_key=True)
-    report_name = Column(String)
-    report_type = Column(String)
-    file_path = Column(String)
-    generated_at = Column(DateTime, default=_utcnow, server_default=func.now())
 
 
 class Setting(Base):

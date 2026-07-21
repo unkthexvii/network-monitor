@@ -181,7 +181,17 @@ async def cleanup_old_data():
     import aiosqlite
     from datetime import datetime, timezone, timedelta
     from core.config import DATABASE_URL, RAW_PING_RETENTION_DAYS, MINUTE_STAT_RETENTION_DAYS, EVENT_HISTORY_RETENTION_DAYS
-    
+
+    # Whitelist of allowed table/column names — must match the hardcoded values below.
+    # These are interpolated into SQL via f-strings, so they MUST stay in this list.
+    _ALLOWED_TABLES = {"raw_ping", "minute_stats", "alerts"}
+    _ALLOWED_COLS = {"ts", "minute", "created_at"}
+
+    def _validate_ident(name: str, allowed: set) -> str:
+        if name not in allowed:
+            raise ValueError(f"Identifier not in whitelist: {name!r}")
+        return name
+
     archive_dir = os.path.join(os.getcwd(), "archives")
     os.makedirs(archive_dir, exist_ok=True)
     
@@ -200,6 +210,8 @@ async def cleanup_old_data():
         
         async with aiosqlite.connect(db_path) as db:
             for table_name, cutoff, time_col in tables_to_archive:
+                _validate_ident(table_name, _ALLOWED_TABLES)
+                _validate_ident(time_col, _ALLOWED_COLS)
                 async with db.execute(f"SELECT count(*) FROM sqlite_master WHERE type='table' AND name=?", (table_name,)) as cursor:
                     if (await cursor.fetchone())[0] == 0:
                         continue

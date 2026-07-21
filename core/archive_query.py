@@ -42,7 +42,7 @@ async def _get_federated_db_connection(start_time: datetime, end_time: datetime)
             # Only ATTACH files matching the expected archive pattern
             if os.path.exists(arch_path) and _archive_path_re.match(arch_filename):
                 db_name = f"arch_{curr_y}_{curr_m:02d}"
-                await db.execute(f"ATTACH DATABASE '{arch_path}' AS {db_name}")
+                await db.execute(f"ATTACH DATABASE '{arch_path}' AS \"{db_name}\"")
                 attached_dbs.append(db_name)
             
             curr_m += 1
@@ -65,7 +65,7 @@ async def _query_stats_aggregates(db: aiosqlite.Connection, attached_dbs: list, 
     all_queries = [main_query]
     for attached in attached_dbs:
         # Safe: attached names come from _get_federated_db_connection which validates the path regex
-        all_queries.append(f"SELECT avg_latency, uptime_percent, packet_loss FROM {attached}.minute_stats WHERE device_id = ? AND minute >= ? AND minute <= ?")
+        all_queries.append(f"SELECT avg_latency, uptime_percent, packet_loss FROM \"{attached}\".minute_stats WHERE device_id = ? AND minute >= ? AND minute <= ?")
     
     full_query = f"SELECT AVG(avg_latency), AVG(uptime_percent), AVG(packet_loss) FROM ({' UNION ALL '.join(all_queries)})"
     
@@ -84,7 +84,7 @@ async def _query_incident_count(db: aiosqlite.Connection, attached_dbs: list, de
     
     all_queries = [main_query.replace('COUNT(id)', 'COUNT(id) AS c')]
     for attached in attached_dbs:
-        all_queries.append(f"SELECT COUNT(id) AS c FROM {attached}.alerts WHERE device_id = ? AND created_at >= ? AND created_at <= ? AND alert_type = 'OFFLINE'")
+        all_queries.append(f"SELECT COUNT(id) AS c FROM \"{attached}\".alerts WHERE device_id = ? AND created_at >= ? AND created_at <= ? AND alert_type = 'OFFLINE'")
     
     full_query = f"SELECT SUM(c) FROM ({' UNION ALL '.join(all_queries)})"
     
@@ -99,7 +99,7 @@ async def _query_minute_stats(db: aiosqlite.Connection, attached_dbs: list, devi
     
     all_queries = [main_query]
     for attached in attached_dbs:
-        all_queries.append(f"SELECT device_id, minute, avg_latency, min_latency, max_latency, packet_loss, uptime_percent FROM {attached}.minute_stats WHERE device_id = ? AND minute >= ? AND minute <= ?")
+        all_queries.append(f"SELECT device_id, minute, avg_latency, min_latency, max_latency, packet_loss, uptime_percent FROM \"{attached}\".minute_stats WHERE device_id = ? AND minute >= ? AND minute <= ?")
     
     full_query = f"SELECT * FROM ({' UNION ALL '.join(all_queries)}) ORDER BY minute ASC"
     
@@ -116,7 +116,7 @@ async def _query_alerts(db: aiosqlite.Connection, attached_dbs: list, device_id:
     
     all_queries = [main_query]
     for attached in attached_dbs:
-        all_queries.append(f"SELECT id, device_id, alert_type, message, created_at FROM {attached}.alerts WHERE device_id = ? AND created_at >= ? AND created_at <= ?")
+        all_queries.append(f"SELECT id, device_id, alert_type, message, created_at FROM \"{attached}\".alerts WHERE device_id = ? AND created_at >= ? AND created_at <= ?")
     
     full_query = f"SELECT * FROM ({' UNION ALL '.join(all_queries)}) ORDER BY created_at DESC LIMIT {limit}"
     
