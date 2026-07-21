@@ -13,7 +13,7 @@ The entrypoint initializes the ASGI server and handles environment preparation, 
 - **Port Conflicts Buster:** Resolves port locking issues on restart. It scans active ports and automatically issues a `taskkill /F /PID <pid>` command if the target port (default `8000`) is in use by another process.
 - **Asset Extraction (PyInstaller compatibility):** When compiled into a single executable, assets (e.g., HTML, CSS, JS, sound files) are bundled into a temporary folder (`sys._MEIPASS`). `main.py` detects if the app is frozen and extracts these files to the local execution directory for modification and persistence.
 - **FastAPI Lifespan Context:** Manages startups (initializing database, loading device cache, registering SSE publishers, spinning up workers) and graceful shutdowns (shutting down scheduler threads).
-- **CORS & Middleware:** Enables cross-origin resource requests, enforces dynamic GZip compression (skipping SSE streams to prevent buffer chunks hanging), and appends "No-Cache" HTTP headers to APIs and assets.
+- **CORS & Middleware:** Restricts cross-origin requests to localhost origins only, enforces dynamic GZip compression (skipping SSE streams to prevent buffer chunks hanging), and appends "No-Cache" HTTP headers to APIs and assets.
 
 ---
 
@@ -38,7 +38,6 @@ The system checks schema integrity during database initialization. It uses `PRAG
 - **`Alert`:** Alarm audit log with timestamps and status transitions (`ONLINE`/`OFFLINE`).
 - **`MinuteStat`:** Per-device minute-level aggregates (avg/min/max latency, packet loss, uptime %).
 - **`TopologyTab` / `TopologyNode` / `TopologyLink`:** Interactive topology mapping.
-- **`ReportJob` / `Report`:** Scheduled and generated PDF reports.
 - **`Setting`:** Key-value configuration store.
 
 ---
@@ -93,13 +92,15 @@ The core engines orchestrate network telemetry, threshold checks, debouncing, an
 - **Device Cache Refresh:** Every 30 seconds, re-syncs from DB to pick up adds/removes/edits.
 - **SNMP Poller:** Every 5 minutes, polls all SNMP-enabled devices.
 - **WAL Checkpoint:** Every 5 minutes, truncates the SQLite WAL to prevent unbounded growth.
-- **Daily Cleanup:** Archives old data (raw pings >7d, stats >30d, alerts >365d) into monthly databases.
+- **Daily Cleanup:** Archives old data (raw pings >7d, stats >7d, alerts >90d) into monthly databases. Archive queries use parameterized SQL and validated identifiers.
+- **Weekly VACUUM:** Reclaims disk space after cleanup deletes.
+- **Hourly Log Purge:** Removes rotated log backups older than 24 hours.
 
 ### Additional Modules
 - **`core/config.py`:** All tunable constants with environment variable overrides.
-- **`core/utils.py`:** Network helpers, IP validation, alert message formatting.
+- **`core/utils.py`:** Timeframe bounds, alert message building (O(N)), default check intervals.
 - **`core/pagination.py`:** Reusable server-side pagination for SQLAlchemy queries.
-- **`core/cache.py`:** Base class for shared memory caches.
+- **`core/cache.py`:** `TTLCache` — bounded (500 entries) in-memory cache with per-key expiry and expired-first eviction.
 
 ---
 

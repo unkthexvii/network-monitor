@@ -106,10 +106,11 @@ All settings are in `core/config.py`. Override via environment variables:
 | `MONITOR_PING_TIMEOUT` | `1.0` | Ping timeout in seconds |
 | `MONITOR_OFFLINE_THRESHOLD` | `3` | Consecutive failures to declare OFFLINE |
 | `MONITOR_ONLINE_THRESHOLD` | `3` | Consecutive successes to declare ONLINE |
-| `MONITOR_RETENTION_DAYS` | `7` | Raw ping data retention |
-| `MONITOR_STAT_RETENTION_DAYS` | `7` | Minute stats retention |
-| `MONITOR_EVENT_RETENTION_DAYS` | `90` | Alert history retention |
+| `MONITOR_RETENTION_DAYS` | `7` | Raw ping data retention (days) |
+| `MONITOR_STAT_RETENTION_DAYS` | `7` | Minute stats retention (days) |
+| `MONITOR_EVENT_RETENTION_DAYS` | `90` | Alert history retention (days) |
 | `MONITOR_DATABASE_URL` | `sqlite+aiosqlite:///monitor.db` | Database path |
+| `CACHE_TTL_SECONDS` | `60` | Dashboard/report cache TTL (seconds) |
 
 ---
 
