@@ -250,6 +250,11 @@ body {
   animation: fadeIn 0.4s cubic-bezier(0.1, 0.9, 0.2, 1) forwards;
 }
 
+/* Link hover (replaces inline onmouseover/onmouseout) */
+.link-hover-white:hover {
+    color: #fff !important;
+}
+
 /* Dark Theme Scrollbars */
 ::-webkit-scrollbar {
   width: 8px;

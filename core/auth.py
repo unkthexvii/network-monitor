@@ -73,5 +73,17 @@ class SessionStore:
         return len(expired)
 
 
+def get_token_from_request(request) -> Optional[str]:
+    """Extract auth token from httpOnly cookie or Authorization header.
+    Cookie takes precedence; Authorization header is a fallback for backward compatibility."""
+    token = request.cookies.get("auth_token")
+    if token:
+        return token
+    auth_header = request.headers.get("Authorization", "")
+    if auth_header.startswith("Bearer "):
+        return auth_header[7:]
+    return None
+
+
 # Singleton
 session_store = SessionStore()

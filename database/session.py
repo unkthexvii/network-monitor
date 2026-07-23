@@ -39,9 +39,31 @@ async def get_db():
 async def init_db():
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
-        
-    # Auto-migration for missing columns in existing databases
+
+    # Auto-migration for missing columns in existing databases.
+    # Column definitions are validated against a whitelist before being
+    # interpolated into SQL, preventing injection if the lists are ever
+    # modified to include user-supplied values.
     from sqlalchemy import text
+
+    # Whitelist of allowed column definitions — must match the hardcoded values below.
+    _ALLOWED_DEVICE_COLS = {
+        "remark", "snmp_version", "snmp_community", "snmp_v3_user",
+        "snmp_v3_auth", "snmp_v3_priv", "site", "location", "rack",
+        "vendor", "model", "created_at", "updated_at",
+    }
+    _ALLOWED_STATUS_COLS = {
+        "last_seen", "offline_since", "sys_name", "sys_contact",
+        "sys_location", "sys_descr", "sys_uptime", "recovery_count",
+        "client_count", "ap_count", "serial_number", "snmp_custom_data",
+    }
+
+    def _validate_col_def(col_def: str, allowed: set) -> str:
+        col_name = col_def.split(" ")[0]
+        if col_name not in allowed:
+            raise ValueError(f"Column not in whitelist: {col_name!r}")
+        return col_def
+
     columns_to_add_devices = [
         "remark VARCHAR",
         "snmp_version VARCHAR DEFAULT 'None'",
@@ -71,21 +93,23 @@ async def init_db():
         "serial_number VARCHAR",
         "snmp_custom_data VARCHAR"
     ]
-    
+
     async with engine.begin() as conn:
         res = await conn.execute(text("PRAGMA table_info(devices)"))
         existing_cols = {row[1] for row in res.fetchall()}
         for col in columns_to_add_devices:
             col_name = col.split(" ")[0]
             if col_name not in existing_cols:
-                await conn.execute(text(f"ALTER TABLE devices ADD COLUMN {col}"))
+                safe_col = _validate_col_def(col, _ALLOWED_DEVICE_COLS)
+                await conn.execute(text(f"ALTER TABLE devices ADD COLUMN {safe_col}"))
 
         res = await conn.execute(text("PRAGMA table_info(device_status)"))
         existing_cols = {row[1] for row in res.fetchall()}
         for col in columns_to_add_status:
             col_name = col.split(" ")[0]
             if col_name not in existing_cols:
-                await conn.execute(text(f"ALTER TABLE device_status ADD COLUMN {col}"))
+                safe_col = _validate_col_def(col, _ALLOWED_STATUS_COLS)
+                await conn.execute(text(f"ALTER TABLE device_status ADD COLUMN {safe_col}"))
 
 async def dispose_engine():
     """Dispose the async engine to close all pooled connections on shutdown."""

@@ -53,7 +53,7 @@
         const iconClass = getEventIcon(evt.alert_type);
         const ts = new Date(evt.timestamp).toLocaleString('en-GB', { hour12: true }).toUpperCase();
         
-        let msgHtml = evt.message.replace(/\((Downtime|Paused for): (.*?)\)/g, '<span class="text-secondary">(</span><span class="text-secondary">$1: </span><span class="text-warning fw-bold">$2</span><span class="text-secondary">)</span>');
+        let msgHtml = (evt.message || '').replace(/\((Downtime|Paused for): (.*?)\)/g, '<span class="text-secondary">(</span><span class="text-secondary">$1: </span><span class="text-warning fw-bold">$2</span><span class="text-secondary">)</span>');
         
         const tsHtml = `<span class="badge" style="background-color: rgba(0,0,0,0.3); color: #aaa; border: 1px solid #333; font-family: monospace; font-weight: normal; padding: 0.35em 0.5em; font-size: 0.72rem;">${ts}</span>`;
         
@@ -204,22 +204,15 @@
     // =========================================================
     // Auth & Read-Only Mode
     // =========================================================
-    window._authToken = localStorage.getItem('auth_token') || '';
     window.isAuthenticated = false;
 
-    function getAuthHeaders() {
-        const h = {'Content-Type': 'application/json'};
-        if (window._authToken) h['Authorization'] = 'Bearer ' + window._authToken;
-        return h;
-    }
-
     function isWriteBlocked() {
-        return window.isReadonly || !window._authToken;
+        return window.isReadonly || !window.isAuthenticated;
     }
 
     function authFetch(url, options) {
         options = options || {};
-        options.headers = Object.assign({}, options.headers || {}, getAuthHeaders());
+        options.credentials = 'include';
         // Guard mutating requests when readonly is active
         if (url.startsWith('/api/') && options.method && options.method !== 'GET') {
             const blocked = isWriteBlocked();
@@ -232,18 +225,23 @@
     }
 
     function showReadonlyToast() {
-        const existing = document.getElementById('readonlyToast');
+        showErrorToast('Read-only mode active — changes are disabled', 3000);
+    }
+
+    function showErrorToast(message, duration) {
+        duration = duration || 4000;
+        const existing = document.getElementById('errorToast');
         if (existing) existing.remove();
         const toast = document.createElement('div');
-        toast.id = 'readonlyToast';
-        toast.style.cssText = 'position:fixed; bottom:20px; left:50%; transform:translateX(-50%); z-index:99999; background:#1e1e1e; color:#ffc107; border:1px solid #ffc10744; border-radius:8px; padding:12px 24px; font-size:0.9rem; box-shadow:0 4px 20px rgba(0,0,0,0.5); transition:opacity 0.3s;';
-        toast.innerHTML = '<i class="bi bi-lock me-2"></i> Read-only mode active — changes are disabled';
+        toast.id = 'errorToast';
+        toast.style.cssText = 'position:fixed; bottom:20px; left:50%; transform:translateX(-50%); z-index:99999; background:#1e1e1e; color:#ff6b6b; border:1px solid #ff6b6b44; border-radius:8px; padding:12px 24px; font-size:0.9rem; box-shadow:0 4px 20px rgba(0,0,0,0.5); transition:opacity 0.3s;';
+        toast.innerHTML = '<i class="bi bi-exclamation-triangle me-2"></i> ' + message;
         document.body.appendChild(toast);
-        setTimeout(() => { toast.style.opacity = '0'; setTimeout(() => toast.remove(), 300); }, 3000);
+        setTimeout(() => { toast.style.opacity = '0'; setTimeout(() => toast.remove(), 300); }, duration);
     }
 
     function refreshReadonly() {
-        return fetch('/api/readonly', {headers: getAuthHeaders()}).then(r => r.json()).then(data => {
+        return fetch('/api/readonly', {credentials: 'include'}).then(r => r.json()).then(data => {
             window.isReadonly = data.readonly;
             window.isAuthenticated = data.authenticated;
             updateAuthUI();
@@ -255,12 +253,15 @@
         authFetch('/api/admin/readonly', {
             method: 'POST',
             body: JSON.stringify({readonly: newVal})
-        }).then(r => r.json()).then(data => {
+        }).then(r => {
+            if (!r.ok) throw new Error('Failed to toggle read-only mode');
+            return r.json();
+        }).then(data => {
             window.isReadonly = data.readonly;
             updateAuthUI();
             // Refresh the page list to reflect new state
             triggerRefresh(false);
-        }).catch(() => {});
+        }).catch(e => showErrorToast(e.message));
     };
 
     window.doLogin = function() {
@@ -272,14 +273,13 @@
         fetch('/api/auth/login', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
+            credentials: 'include',
             body: JSON.stringify({password: pw})
         }).then(r => {
             if (!r.ok) { err.classList.remove('d-none'); btn.disabled = false; btn.innerText = 'Login'; return null; }
             return r.json();
         }).then(data => {
-            if (data && data.token) {
-                window._authToken = data.token;
-                localStorage.setItem('auth_token', data.token);
+            if (data && data.ok) {
                 bootstrap.Modal.getInstance(document.getElementById('loginModal')).hide();
                 document.getElementById('loginPassword').value = '';
                 err.classList.add('d-none');
@@ -290,9 +290,7 @@
 
     window.doLogout = function() {
         authFetch('/api/auth/logout', {method: 'POST'}).catch(() => {});
-        window._authToken = '';
-        localStorage.removeItem('auth_token');
-        refreshReadonly().then(() => triggerRefresh(false));
+        refreshReadonly().then(() => triggerRefresh(false)).catch(() => {});
     };
 
     window.doChangePassword = function() {
@@ -353,8 +351,7 @@
     };
 
     function updateAuthUI() {
-        const isAuthed = !!(window._authToken && window._authToken.length > 0);
-        window.isAuthenticated = isAuthed;
+        const isAuthed = window.isAuthenticated;
         const isReadonly = isWriteBlocked();
 
         function hideEl(el, hide) {
@@ -428,15 +425,9 @@
 
     // Assume readonly until server responds (prevents flash of editable UI)
     window.isReadonly = true;
-    fetch('/api/readonly', {headers: getAuthHeaders()}).then(r => r.json()).then(data => {
+    fetch('/api/readonly', {credentials: 'include'}).then(r => r.json()).then(data => {
         window.isReadonly = data.readonly;
-        if (data.authenticated) {
-            window.isAuthenticated = true;
-            window._authToken = localStorage.getItem('auth_token') || '';
-        } else {
-            window._authToken = '';
-            localStorage.removeItem('auth_token');
-        }
+        window.isAuthenticated = data.authenticated;
         updateAuthUI();
     });
 
@@ -485,8 +476,8 @@
         let html = `<div class="d-flex justify-content-end align-items-center gap-2">`;
         
         // Prev button
-        const prevDis = page === 1 ? 'disabled style="opacity:0.5; cursor:not-allowed;"' : `onclick="window.paginationState['${pageId}']=${page-1}; pageUpdaters['${updaterKey}'](); return false;"`;
-        html += `<button class="btn btn-sm shadow-none" style="background: rgba(255,255,255,0.05); border: 1px solid #333; color: #aaa; width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; transition: all 0.2s;" ${prevDis} onmouseover="this.style.background='rgba(255,255,255,0.1)'" onmouseout="this.style.background='rgba(255,255,255,0.05)'"><i class="bi bi-chevron-left" style="font-size:0.7rem;"></i></button>`;
+        const prevDis = page === 1 ? 'disabled style="opacity:0.5; cursor:not-allowed;"' : `data-action="paginate" data-page="${page-1}" data-page-id="${pageId}" data-updater="${updaterKey}"`;
+        html += `<button class="btn btn-sm shadow-none btn-pagination" style="background: rgba(255,255,255,0.05); border: 1px solid #333; color: #aaa; width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; transition: all 0.2s;" ${prevDis}><i class="bi bi-chevron-left" style="font-size:0.7rem;"></i></button>`;
         
         // Page numbers
         let pages = [];
@@ -508,13 +499,13 @@
             } else if (i === page) {
                 html += `<button class="btn btn-sm shadow-none fw-bold" style="background: rgba(255,255,255,0.15); border: 1px solid #555; color: #fff; width: 32px; height: 32px; display: flex; align-items: center; justify-content: center;">${i}</button>`;
             } else {
-                html += `<button class="btn btn-sm shadow-none" style="background: transparent; border: 1px solid transparent; color: #888; width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; transition: all 0.2s;" onclick="window.paginationState['${pageId}']=${i}; pageUpdaters['${updaterKey}'](); return false;" onmouseover="this.style.color='#fff'" onmouseout="this.style.color='#888'">${i}</button>`;
+                html += `<button class="btn btn-sm shadow-none btn-pagination" style="background: transparent; border: 1px solid transparent; color: #888; width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; transition: all 0.2s;" data-action="paginate" data-page="${i}" data-page-id="${pageId}" data-updater="${updaterKey}">${i}</button>`;
             }
         });
         
         // Next button
-        const nextDis = page === totalPages ? 'disabled style="opacity:0.5; cursor:not-allowed;"' : `onclick="window.paginationState['${pageId}']=${page+1}; pageUpdaters['${updaterKey}'](); return false;"`;
-        html += `<button class="btn btn-sm shadow-none" style="background: rgba(255,255,255,0.05); border: 1px solid #333; color: #aaa; width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; transition: all 0.2s;" ${nextDis} onmouseover="this.style.background='rgba(255,255,255,0.1)'" onmouseout="this.style.background='rgba(255,255,255,0.05)'"><i class="bi bi-chevron-right" style="font-size:0.7rem;"></i></button>`;
+        const nextDis = page === totalPages ? 'disabled style="opacity:0.5; cursor:not-allowed;"' : `data-action="paginate" data-page="${page+1}" data-page-id="${pageId}" data-updater="${updaterKey}"`;
+        html += `<button class="btn btn-sm shadow-none btn-pagination" style="background: rgba(255,255,255,0.05); border: 1px solid #333; color: #aaa; width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; transition: all 0.2s;" ${nextDis}><i class="bi bi-chevron-right" style="font-size:0.7rem;"></i></button>`;
         
         html += `</div>`;
         container.innerHTML = html;
@@ -525,7 +516,7 @@
         const sep = url.includes('?') ? '&' : '?';
         const finalUrl = `${url}${sep}page=${page}&limit=${PER_PAGE}`;
         
-        fetch(finalUrl)
+        fetch(finalUrl, {credentials: 'include'})
             .then(r => {
                 if (!r.ok) throw new Error(`HTTP ${r.status}`);
                 return r.json();
@@ -549,7 +540,7 @@
 
     // --- DASHBOARD ---
     pageUpdaters.dashboard = function() {
-        fetch('/api/dashboard/stats').then(r => r.json()).then(stats => {
+        fetch('/api/dashboard/stats', {credentials: 'include'}).then(r => r.json()).then(stats => {
             document.getElementById('stat-online').textContent = stats.online;
             document.getElementById('stat-offline').textContent = stats.offline;
             document.getElementById('stat-paused').textContent = stats.paused || 0;
@@ -613,8 +604,14 @@
     window.allDevices = [];
 
     function loadAvailableDevices() {
-        return fetch('/api/devices/names').then(r => r.json()).then(devices => {
-            if (JSON.stringify(devices) === JSON.stringify(window.allDevices)) return;
+        return fetch('/api/devices/names', {credentials: 'include'}).then(r => r.json()).then(devices => {
+            // Quick comparison: same length and same last device id avoids full JSON.stringify
+            const prev = window.allDevices;
+            if (prev && prev.length === devices.length &&
+                prev.length > 0 && devices.length > 0 &&
+                prev[prev.length - 1].id === devices[devices.length - 1].id) {
+                return;
+            }
             window.allDevices = devices;
             ['devicesPageSearchInput', 'alertsPageSearchInput', 'reportDeviceSearchInput'].forEach(id => {
                 const el = document.getElementById(id);
@@ -742,7 +739,7 @@
 
     pageUpdaters.topology = function(isSseUpdate = false) {
         loadAvailableDevices();
-        fetch('/api/topology').then(r => r.json()).then(data => {
+        fetch('/api/topology', {credentials: 'include'}).then(r => r.json()).then(data => {
             window.topologyTabs = data.tabs;
             window.topologyNodesMap = {};
             window.topologyEdgesMap = {};
@@ -806,7 +803,10 @@
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({ name })
-                        }).then(r => r.json()).then(tab => {
+                        }).then(r => {
+                            if (!r.ok) throw new Error('Failed to create topology tab');
+                            return r.json();
+                        }).then(tab => {
                             window.topologyTabs.push(tab);
                             window.topologyNodesMap[tab.id] = [];
                             window.topologyEdgesMap[tab.id] = [];
@@ -814,7 +814,7 @@
                             if (input) input.value = tab.name;
                             switchTopologyTab(tab.id);
                             bootstrap.Modal.getInstance(document.getElementById('addTopologyTabModal'))?.hide();
-                        });
+                        }).catch(e => showErrorToast(e.message));
                     }
                 });
                 addTabForm.dataset.bound = "true";
@@ -832,10 +832,11 @@
                         () => {
             authFetch(`/api/topology/tab/${window.currentTopologyTabId}`, {
                                 method: 'DELETE'
-                            }).then(() => {
+                            }).then(r => {
+                                if (!r.ok) throw new Error('Failed to delete topology tab');
                                 window.currentTopologyTabId = null;
                                 pageUpdaters.topology();
-                            });
+                            }).catch(e => showErrorToast(e.message));
                         }
                     );
                 });
@@ -848,14 +849,15 @@
                 btnSave.addEventListener('click', () => {
                     if (!window.networkInstance || !window.currentTopologyTabId) return;
                     btnSave.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Saving...';
-                    
+                    btnSave.disabled = true;
+
                     const positions = window.networkInstance.getPositions();
                     const nodesData = window.currentNetworkNodes.get().map(n => ({
                         id: n.id,
                         x: positions[n.id]?.x,
                         y: positions[n.id]?.y
                     }));
-                    
+
                     const edgesData = window.currentNetworkEdges.get().map(e => ({
                         from: e.from,
                         to: e.to,
@@ -866,12 +868,18 @@
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ tab_id: window.currentTopologyTabId, nodes: nodesData, edges: edgesData })
-                    }).then(() => {
+                    }).then(r => {
+                        if (!r.ok) throw new Error('Failed to save topology layout');
                         triggerRefresh(true); // soft update preserves canvas + zoom/pan
                         setTimeout(() => {
                             btnSave.innerHTML = '<i class="bi bi-check-lg me-1"></i> Saved';
+                            btnSave.disabled = false;
                             setTimeout(() => { btnSave.innerHTML = '<i class="bi bi-floppy me-1"></i> Save Layout'; }, 2000);
                         }, 500);
+                    }).catch(e => {
+                        showErrorToast(e.message);
+                        btnSave.innerHTML = '<i class="bi bi-floppy me-1"></i> Save Layout';
+                        btnSave.disabled = false;
                     });
                 });
                 btnSave.dataset.bound = "true";
@@ -987,16 +995,16 @@
                 const remarkStyle = dev.remark ? 'border-bottom: 1px dotted #888; cursor: help;' : '';
 
                 return `
-                    <tr style="cursor: pointer;" onclick="openDeviceDetails('${enc}')">
-                        <td class="text-center" onclick="event.stopPropagation()">
-                            ${(window.isReadonly || !window._authToken) ? '' : '<input class="form-check-input row-checkbox bg-transparent border-secondary shadow-none" type="checkbox" data-id="' + dev.id + '">'}
+                    <tr style="cursor: pointer;" data-action="open-device" data-device="${enc}">
+                        <td class="text-center stop-propagation">
+                            ${(window.isReadonly || !window.isAuthenticated) ? '' : '<input class="form-check-input row-checkbox bg-transparent border-secondary shadow-none" type="checkbox" data-id="' + dev.id + '">'}
                         </td>
                         <td class="text-white fw-medium"><span${remarkHtml} style="${remarkStyle}">${dev.name}</span></td>
                         <td class="text-secondary">${dev.device_type}</td>
                         <td class="text-secondary" style="font-family: monospace;">${dev.ip_address}</td>
                         <td class="text-${colorClass} fw-bold"><span class="indicator ind-${indClass}"></span>${displayStatus}</td>
                         <td class="text-center" style="vertical-align: middle;">
-                            ${(window.isReadonly || !window._authToken) ? '' : '<i class="bi bi-trash text-danger" style="font-size: 1.15rem; cursor: pointer;" onclick="event.stopPropagation(); deleteDevice(\'' + dev.id + '\')"></i>'}
+                            ${(window.isReadonly || !window.isAuthenticated) ? '' : '<i class="bi bi-trash text-danger" style="font-size: 1.15rem; cursor: pointer;" data-action="delete-device" data-id="' + dev.id + '"></i>'}
                         </td>
                     </tr>`;
             }).join('');
@@ -1094,7 +1102,7 @@
                         html += window.renderTimelineEvent(evt);
                     });
                     html += `<div class="mt-3 pt-2 border-top border-secondary border-opacity-25">
-                                <a href="/reports" onclick="window.currentReportDeviceFilterId = '${sid}'; document.getElementById('reportDeviceSearchInput').value = '${devData.device}';" class="text-primary text-decoration-none" style="font-size: 0.85rem; font-weight: 500;">
+                                <a href="#" data-action="view-report" data-device-id="${sid}" data-device-name="${devData.device}" class="text-primary text-decoration-none" style="font-size: 0.85rem; font-weight: 500;">
                                     <i class="bi bi-box-arrow-up-right me-1"></i>View full history in Reports
                                 </a>
                              </div>`;
@@ -1157,7 +1165,7 @@
                 return; // Wait for user to select dates
             }
         }
-        fetch(url)
+        fetch(url, {credentials: 'include'})
             .then(r => r.json())
             .then(data => {
                 document.getElementById('reportUptime').innerText = data.global_uptime + '%';
@@ -1228,9 +1236,11 @@
             container.appendChild(allItem);
         }
 
-        (items || []).forEach(d => {
+        let matchCount = 0;
+    (items || []).forEach(d => {
             const match = searchKeys.some(key => d[key] && String(d[key]).toLowerCase().includes(filterText));
             if (match) {
+                matchCount++;
                 const item = document.createElement('a');
                 item.className = 'dropdown-item text-white rounded combo-item';
                 item.href = '#';
@@ -1239,6 +1249,15 @@
                 container.appendChild(item);
             }
         });
+
+        // Show "No results" message if nothing matched
+        if (matchCount === 0) {
+            const noResults = document.createElement('div');
+            noResults.className = 'dropdown-item text-secondary text-center py-2';
+            noResults.style.cursor = 'default';
+            noResults.innerText = 'No results found';
+            container.appendChild(noResults);
+        }
     }
 
     // =========================================================
@@ -1274,10 +1293,11 @@
         const editInterval = document.getElementById('editInterval'); if (editInterval) editInterval.value = dev.check_interval || 1;
         const editRemark = document.getElementById('editRemark'); if (editRemark) editRemark.value = dev.remark || '';
         const editSnmpVersion = document.getElementById('editSnmpVersion'); if (editSnmpVersion) { editSnmpVersion.value = dev.snmp_version || 'None'; window.toggleSnmpEditFields(); }
-        const editSnmpCommunity = document.getElementById('editSnmpCommunity'); if (editSnmpCommunity) editSnmpCommunity.value = dev.snmp_community || '';
-        const editSnmpUser = document.getElementById('editSnmpUser'); if (editSnmpUser) editSnmpUser.value = dev.snmp_v3_user || '';
-        const editSnmpAuth = document.getElementById('editSnmpAuth'); if (editSnmpAuth) editSnmpAuth.value = dev.snmp_v3_auth || '';
-        const editSnmpPriv = document.getElementById('editSnmpPriv'); if (editSnmpPriv) editSnmpPriv.value = dev.snmp_v3_priv || '';
+        const editSnmpCommunity = document.getElementById('editSnmpCommunity'); if (editSnmpCommunity) { editSnmpCommunity.value = ''; editSnmpCommunity.placeholder = dev.snmp_community ? 'Leave blank to keep current' : 'No community set'; }
+        // SNMP v3 fields are not returned by the API (security) — leave blank to keep current
+        const editSnmpUser = document.getElementById('editSnmpUser'); if (editSnmpUser) { editSnmpUser.value = ''; editSnmpUser.placeholder = 'Leave blank to keep current'; }
+        const editSnmpAuth = document.getElementById('editSnmpAuth'); if (editSnmpAuth) { editSnmpAuth.value = ''; editSnmpAuth.placeholder = 'Leave blank to keep current'; }
+        const editSnmpPriv = document.getElementById('editSnmpPriv'); if (editSnmpPriv) { editSnmpPriv.value = ''; editSnmpPriv.placeholder = 'Leave blank to keep current'; }
 
         const snmpSection = document.getElementById('snmpDetailsSection');
         if (snmpSection) {
@@ -1342,7 +1362,7 @@
         }
 
         // Disable all input/select/textarea fields in detail panel when readonly
-        const detailReadonly = window.isReadonly || !window._authToken;
+        const detailReadonly = window.isReadonly || !window.isAuthenticated;
         document.querySelectorAll('#deviceDetailPanel form input, #deviceDetailPanel form select, #deviceDetailPanel form textarea').forEach(f => {
             f.disabled = detailReadonly;
         });
@@ -1360,7 +1380,7 @@
         lossEl.innerHTML = '<span class="spinner-border spinner-border-sm text-secondary"></span>';
         if (uptimeEl) uptimeEl.innerHTML = '<span class="spinner-border spinner-border-sm text-secondary"></span>';
 
-        fetch(`/api/devices/${deviceId}/stats?timeframe=${timeframe}`)
+        fetch(`/api/devices/${deviceId}/stats?timeframe=${timeframe}`, {credentials: 'include'})
             .then(r => r.json())
             .then(stats => {
                 latencyEl.innerText = stats.latency_ms ? stats.latency_ms.toFixed(1) + 'ms' : '--';
@@ -1388,53 +1408,79 @@
         if (e.target && e.target.id === 'btnSaveConfig') {
             const dev = window.currentOpenDevice;
             if (!dev) return;
+            const btn = e.target;
+            btn.disabled = true;
+            btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Saving...';
+            const snmpCommunityVal = document.getElementById('editSnmpCommunity').value;
+            const snmpV3UserVal = document.getElementById('editSnmpUser').value;
+            const snmpV3AuthVal = document.getElementById('editSnmpAuth').value;
+            const snmpV3PrivVal = document.getElementById('editSnmpPriv').value;
+            const updateBody = {
+                name: document.getElementById('editName').value,
+                ip_address: document.getElementById('editIp').value,
+                device_type: document.getElementById('editType').value,
+                site: document.getElementById('editSite').value,
+                location: document.getElementById('editLocation').value,
+                rack: document.getElementById('editRack').value,
+                vendor: document.getElementById('editVendor').value,
+                model: document.getElementById('editModel').value,
+                check_interval: parseInt(document.getElementById('editInterval').value, 10) || 10,
+                remark: document.getElementById('editRemark').value,
+                snmp_version: document.getElementById('editSnmpVersion').value
+            };
+            // Only include SNMP credential fields if user entered new values (leave blank to keep current)
+            if (snmpCommunityVal) updateBody.snmp_community = snmpCommunityVal;
+            if (snmpV3UserVal) updateBody.snmp_v3_user = snmpV3UserVal;
+            if (snmpV3AuthVal) updateBody.snmp_v3_auth = snmpV3AuthVal;
+            if (snmpV3PrivVal) updateBody.snmp_v3_priv = snmpV3PrivVal;
             authFetch(`/api/devices/${dev.id}`, {
                 method: 'PUT',
                 headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({
-                    name: document.getElementById('editName').value,
-                    ip_address: document.getElementById('editIp').value,
-                    device_type: document.getElementById('editType').value,
-                    site: document.getElementById('editSite').value,
-                    location: document.getElementById('editLocation').value,
-                    rack: document.getElementById('editRack').value,
-                    vendor: document.getElementById('editVendor').value,
-                    model: document.getElementById('editModel').value,
-                    check_interval: parseInt(document.getElementById('editInterval').value, 10) || 1,
-                    remark: document.getElementById('editRemark').value,
-                    snmp_version: document.getElementById('editSnmpVersion').value,
-                    snmp_community: document.getElementById('editSnmpCommunity').value,
-                    snmp_v3_user: document.getElementById('editSnmpUser').value,
-                    snmp_v3_auth: document.getElementById('editSnmpAuth').value,
-                    snmp_v3_priv: document.getElementById('editSnmpPriv').value
-                })
-            }).then(r => r.json()).then(() => {
+                body: JSON.stringify(updateBody)
+            }).then(r => {
+                if (!r.ok) throw new Error('Failed to save device configuration');
+                return r.json();
+            }).then(() => {
                 document.getElementById('detailDeviceName').innerText = document.getElementById('editName').value;
-                const btn = e.target;
                 btn.innerText = 'Saved!';
                 btn.classList.replace('btn-primary', 'btn-success');
-                setTimeout(() => { btn.innerText = 'Save Configuration'; btn.classList.replace('btn-success', 'btn-primary'); }, 2000);
+                setTimeout(() => { btn.innerText = 'Save Configuration'; btn.classList.replace('btn-success', 'btn-primary'); btn.disabled = false; }, 2000);
                 triggerRefresh(false);
+            }).catch(e => {
+                showErrorToast(e.message);
+                btn.innerText = 'Save Configuration';
+                btn.classList.replace('btn-success', 'btn-primary');
+                btn.disabled = false;
             });
         } else if (e.target && e.target.id === 'btnToggleMonitoring') {
             const dev = window.currentOpenDevice;
             if (!dev) return;
+            const btn = e.target;
             const newEnabled = !dev.enabled ? 1 : 0;
+            btn.disabled = true;
+            btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Saving...';
             authFetch(`/api/devices/${dev.id}`, {
                 method: 'PUT',
                 headers: {'Content-Type': 'application/json'},
                 body: JSON.stringify({ enabled: newEnabled })
-            }).then(() => {
+            }).then(r => {
+                if (!r.ok) throw new Error('Failed to update device monitoring state');
                 dev.enabled = newEnabled;
-                
+
                 let displayStatus = !dev.enabled ? 'PAUSED' : dev.status;
                 const colorClass = displayStatus === 'ONLINE' ? 'success' : (displayStatus === 'OFFLINE' ? 'danger' : (displayStatus === 'PAUSED' ? 'warning' : 'secondary'));
                 document.getElementById('detailDeviceBadge').innerHTML = `<i class="bi bi-circle-fill text-${colorClass} me-1" style="font-size: 0.5rem; vertical-align: middle;"></i> ${displayStatus}`;
-                
-                e.target.innerText = !dev.enabled ? 'Resume Monitoring' : 'Pause Monitoring';
-                e.target.className = !dev.enabled ? 'btn btn-outline-success w-100 py-2' : 'btn btn-outline-warning w-100 py-2';
+
+                btn.innerText = !dev.enabled ? 'Resume Monitoring' : 'Pause Monitoring';
+                btn.className = !dev.enabled ? 'btn btn-outline-success w-100 py-2' : 'btn btn-outline-warning w-100 py-2';
+                btn.disabled = false;
 
                 triggerRefresh(false);
+            }).catch(e => {
+                showErrorToast(e.message);
+                btn.innerText = !dev.enabled ? 'Resume Monitoring' : 'Pause Monitoring';
+                btn.className = !dev.enabled ? 'btn btn-outline-success w-100 py-2' : 'btn btn-outline-warning w-100 py-2';
+                btn.disabled = false;
             });
         }
     });
@@ -1449,7 +1495,10 @@
             'Delete',
             'btn-danger',
             () => {
-                authFetch(`/api/devices/${deviceId}`, { method: 'DELETE' }).then(() => triggerRefresh(false));
+                authFetch(`/api/devices/${deviceId}`, { method: 'DELETE' }).then(r => {
+                    if (!r.ok) throw new Error('Failed to delete device');
+                    triggerRefresh(false);
+                }).catch(e => showErrorToast(e.message));
             }
         );
     };
@@ -1458,7 +1507,7 @@
     function toggleBulkDeleteBtn() {
         const btn = document.getElementById('bulkDeleteBtn');
         const checked = document.querySelectorAll('.row-checkbox:checked');
-        const blocked = window.isReadonly || !window._authToken;
+        const blocked = window.isReadonly || !window.isAuthenticated;
         if (btn) {
             if (!blocked && checked.length > 0) { btn.classList.remove('d-none'); btn.classList.add('d-flex'); }
             else { btn.classList.add('d-none'); btn.classList.remove('d-flex'); }
@@ -1469,6 +1518,85 @@
     // Init — wire up all event listeners (runs once)
     // =========================================================
     function init() {
+        // Event delegation for data-action and data-nav attributes
+        document.addEventListener('click', function(e) {
+            const target = e.target.closest('[data-action]');
+            if (!target) {
+                // Handle data-nav (navigation icons)
+                const navTarget = e.target.closest('[data-nav]');
+                if (navTarget) {
+                    e.preventDefault();
+                    navigateTo(navTarget.getAttribute('data-nav'));
+                }
+                return;
+            }
+
+            const action = target.getAttribute('data-action');
+            switch (action) {
+                case 'export-csv':
+                    window.location.href = '/api/devices/export/csv';
+                    break;
+                case 'change-password':
+                    window.doChangePassword();
+                    break;
+                case 'login':
+                    window.doLogin();
+                    break;
+                case 'paginate':
+                    window.paginationState[target.getAttribute('data-page-id')] = parseInt(target.getAttribute('data-page'), 10);
+                    const updater = target.getAttribute('data-updater');
+                    if (window.pageUpdaters[updater]) window.pageUpdaters[updater]();
+                    break;
+                case 'open-device':
+                    window.openDeviceDetails(target.getAttribute('data-device'));
+                    break;
+                case 'delete-device':
+                    window.deleteDevice(target.getAttribute('data-id'));
+                    break;
+                case 'view-report':
+                    window.currentReportDeviceFilterId = target.getAttribute('data-device-id');
+                    document.getElementById('reportDeviceSearchInput').value = target.getAttribute('data-device-name');
+                    window.pageUpdaters.reports();
+                    e.preventDefault();
+                    break;
+            }
+        });
+
+        // Handle Enter key on password fields
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter') {
+                const target = e.target.closest('[data-action]');
+                if (!target) return;
+                const action = target.getAttribute('data-action');
+                if (action === 'change-password-on-enter') {
+                    window.doChangePassword();
+                } else if (action === 'login-on-enter') {
+                    window.doLogin();
+                }
+            }
+        });
+
+        // Handle data-clear-search
+        document.addEventListener('click', function(e) {
+            const btn = e.target.closest('[data-clear-search]');
+            if (btn) {
+                const inputId = btn.getAttribute('data-clear-search');
+                const input = document.getElementById(inputId);
+                if (input) {
+                    input.value = '';
+                    input.focus();
+                    input.dispatchEvent(new Event('input', { bubbles: true }));
+                }
+            }
+        });
+
+        // Stop propagation for checkbox cells in device rows
+        document.addEventListener('click', function(e) {
+            if (e.target.closest('.stop-propagation')) {
+                e.stopPropagation();
+            }
+        });
+
         // Combobox UX enhancements: Clear text on open, restore on close
         ['topologySiteSearchInput', 'devicesPageSearchInput', 'alertsPageSearchInput', 'reportDeviceSearchInput'].forEach(id => {
             const input = document.getElementById(id);
@@ -1566,7 +1694,7 @@
         // PDF export
         const pdfBtn = document.getElementById('btnExportPdf');
         if (pdfBtn) pdfBtn.addEventListener('click', () => {
-            if (window.currentReportDeviceFilterId) {
+            if (window.currentReportDeviceFilterId && window.currentReportDeviceFilterId !== 'all') {
                 const timeFilter = document.getElementById('reportTimeFilter').value;
                 let url = `/api/reports/generate?device_id=${window.currentReportDeviceFilterId}&time_filter=${timeFilter}`;
                 if (timeFilter === 'custom') {
@@ -1604,11 +1732,15 @@
                     const checked = document.querySelectorAll('.row-checkbox:checked');
                     const promises = [];
                     checked.forEach(cb => promises.push(authFetch(`/api/devices/${cb.getAttribute('data-id')}`, { method: 'DELETE' })));
-                    Promise.all(promises).then(() => {
+                    Promise.all(promises).then(results => {
+                        const failed = results.filter(r => !r.ok).length;
+                        if (failed > 0) {
+                            showErrorToast(`${failed} device(s) failed to delete`);
+                        }
                         triggerRefresh(false);
                         bulkBtn.classList.add('d-none');
                         bulkBtn.classList.remove('d-flex');
-                    });
+                    }).catch(e => showErrorToast(e.message));
                 }
             );
         });
@@ -1634,19 +1766,21 @@
             const snmp_v3_priv = document.getElementById('newDeviceSnmpPriv').value;
 
             if (!name) name = ip;
+            const submitBtn = addForm.querySelector('button[type="submit"]');
+            if (submitBtn) { submitBtn.disabled = true; submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Adding...'; }
             authFetch('/api/devices', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ 
-                    name, 
-                    ip_address: ip, 
-                    device_type: type, 
+                body: JSON.stringify({
+                    name,
+                    ip_address: ip,
+                    device_type: type,
                     site,
                     location,
                     rack,
                     vendor,
                     model,
-                    check_interval: parseInt(interval, 10) || 1,
+                    check_interval: parseInt(interval, 10) || 10,
                     remark,
                     snmp_version,
                     snmp_community,
@@ -1654,10 +1788,15 @@
                     snmp_v3_auth,
                     snmp_v3_priv
                 })
-            }).then(() => {
+            }).then(r => {
+                if (!r.ok) throw new Error('Failed to add device');
                 triggerRefresh(false);
                 bootstrap.Modal.getInstance(document.getElementById('addDeviceModal'))?.hide();
                 addForm.reset();
+                window.toggleSnmpFields();
+            }).catch(e => {
+                showErrorToast(e.message);
+                if (submitBtn) { submitBtn.disabled = false; submitBtn.innerHTML = 'Save Device'; }
             });
         });
 
@@ -1694,7 +1833,7 @@
                 const dl = document.getElementById('autoDetectedSubnets'); if (dl) dl.innerHTML = '';
                 const si = document.getElementById('discoverSubnet'); if (si) si.value = '';
 
-                fetch('/api/devices/subnets').then(r => r.json()).then(data => {
+                fetch('/api/devices/subnets', {credentials: 'include'}).then(r => r.json()).then(data => {
                     if (data.subnets && data.subnets.length > 0) {
                         data.subnets.forEach(sub => { if (dl) dl.appendChild(Object.assign(document.createElement('option'), { value: sub, textContent: sub })); });
                         if (si) si.value = data.subnets[0];
@@ -1709,7 +1848,7 @@
 
             document.getElementById('btnStartDiscovery').addEventListener('click', () => {
                 const subnet = document.getElementById('discoverSubnet').value.trim();
-                if (!subnet) { alert('Please enter a subnet.'); return; }
+                if (!subnet) { showErrorToast('Please enter a subnet.'); return; }
                 document.getElementById('discoverState1').classList.add('d-none');
                 document.getElementById('discoverState2').classList.remove('d-none');
                 document.getElementById('discoveryProgressBar').style.width = '50%';
@@ -1717,8 +1856,11 @@
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ subnet })
+                }).then(r => {
+                    if (!r.ok) throw new Error('Failed to start discovery');
                 }).catch(err => {
                     console.error('Discovery error:', err);
+                    showErrorToast(err.message || 'Discovery failed — check server logs');
                     document.getElementById('discoverState2').classList.add('d-none');
                     document.getElementById('discoverState3').classList.remove('d-none');
                     document.getElementById('discoveredCount').innerText = '0';
@@ -1733,19 +1875,22 @@
                     const dev = window.discoveredDevices[cb.getAttribute('data-idx')];
                     devicesToAdd.push({ name: dev.host, ip_address: dev.ip, device_type: 'Device' });
                 });
-                
+
                 if (devicesToAdd.length === 0) return;
-                
+
+                const importBtn = document.getElementById('btnImportDiscovered');
+                if (importBtn) { importBtn.disabled = true; importBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Importing...'; }
                 authFetch('/api/devices/bulk', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(devicesToAdd)
-                }).then(() => {
+                }).then(r => {
+                    if (!r.ok) throw new Error('Failed to import devices');
                     triggerRefresh(false);
                     bootstrap.Modal.getInstance(discoverModal)?.hide();
-                }).catch(err => {
-                    console.error('Error importing devices:', err);
-                    alert('Error importing devices.');
+                }).catch(e => {
+                    showErrorToast(e.message);
+                    if (importBtn) { importBtn.disabled = false; importBtn.innerHTML = 'Import Selected Devices'; }
                 });
             });
         }

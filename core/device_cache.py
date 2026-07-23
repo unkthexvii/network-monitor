@@ -149,15 +149,18 @@ class DeviceCache:
                 for sid in stale_ids:
                     del self._devices[sid]
 
-    def get_enabled_devices(self) -> List[CachedDevice]:
+    async def get_enabled_devices(self) -> List[CachedDevice]:
         """Return all enabled devices (no DB query, pure memory)."""
-        return [d for d in self._devices.values() if d.enabled]
+        async with self.lock:
+            return [d for d in self._devices.values() if d.enabled]
 
-    def get_device(self, device_id: int) -> Optional[CachedDevice]:
-        return self._devices.get(device_id)
+    async def get_device(self, device_id: int) -> Optional[CachedDevice]:
+        async with self.lock:
+            return self._devices.get(device_id)
 
-    def get_all(self) -> List[CachedDevice]:
-        return list(self._devices.values())
+    async def get_all(self) -> List[CachedDevice]:
+        async with self.lock:
+            return list(self._devices.values())
 
     @property
     def loaded(self) -> bool:

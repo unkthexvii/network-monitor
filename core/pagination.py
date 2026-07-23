@@ -16,7 +16,10 @@ async def paginate(session: AsyncSession, stmt, page: int, limit: int, transform
     page = max(1, page)
     limit = max(1, limit)
 
-    count_stmt = select(func.count()).select_from(stmt.subquery())
+    # Strip ORDER BY from the count query — sorting all rows before counting
+    # is wasteful and unnecessary. The subquery preserves WHERE/JOIN clauses
+    # so the count reflects the actual result set.
+    count_stmt = select(func.count()).select_from(stmt.order_by(None).subquery())
     total = (await session.execute(count_stmt)).scalar() or 0
 
     if total == 0:

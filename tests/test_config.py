@@ -5,7 +5,6 @@ from core.config import (
     PING_TIMEOUT,
     OFFLINE_THRESHOLD,
     ONLINE_THRESHOLD,
-    RAW_PING_RETENTION_DAYS,
     MINUTE_STAT_RETENTION_DAYS,
     EVENT_HISTORY_RETENTION_DAYS,
     DATABASE_URL,
@@ -42,10 +41,8 @@ def test_online_threshold_is_int():
 
 
 def test_retention_days_are_ints():
-    assert isinstance(RAW_PING_RETENTION_DAYS, int)
     assert isinstance(MINUTE_STAT_RETENTION_DAYS, int)
     assert isinstance(EVENT_HISTORY_RETENTION_DAYS, int)
-    assert RAW_PING_RETENTION_DAYS > 0
     assert MINUTE_STAT_RETENTION_DAYS > 0
     assert EVENT_HISTORY_RETENTION_DAYS > 0
 
@@ -67,6 +64,8 @@ def test_readonly_is_bool():
 def test_default_admin_password_is_string():
     assert isinstance(DEFAULT_ADMIN_PASSWORD, str)
     assert len(DEFAULT_ADMIN_PASSWORD) > 0
+    # Default password must not be the insecure "admin"
+    assert DEFAULT_ADMIN_PASSWORD != "admin"
 
 
 def test_session_ttl_is_int():

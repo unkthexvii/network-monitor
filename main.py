@@ -91,7 +91,6 @@ from database.session import init_db, dispose_engine
 from core.scheduler import start_scheduler, shutdown_scheduler
 from core.alert_engine import register_notify_callback
 from core.device_cache import device_cache
-from core.workers import register_worker_notify
 
 # Import routers
 from api.devices import router as devices_router
@@ -102,7 +101,7 @@ from api.reports import router as reports_router
 from api.stream import router as stream_router, sse_publisher
 from core.config import READONLY, DEFAULT_ADMIN_PASSWORD, get_readonly_from_db, set_readonly_in_db
 from api.auth import router as auth_router
-from core.auth import session_store, hash_password
+from core.auth import session_store, hash_password, get_token_from_request
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -113,9 +112,8 @@ async def lifespan(app: FastAPI):
     logger.info("Loading device cache into memory...")
     await device_cache.load_from_db()
     
-    logger.info("Registering SSE callbacks...")
+    logger.info("Registering SSE callback...")
     register_notify_callback(sse_publisher)
-    register_worker_notify(sse_publisher)
     
     logger.info("Starting Scheduler...")
     start_scheduler()
@@ -184,31 +182,35 @@ async def log_requests(request, call_next):
 
 @app.middleware("http")
 async def auth_guard(request, call_next):
-    # Allow non-mutating requests through
-    if request.method in ("GET", "HEAD", "OPTIONS"):
-        return await call_next(request)
-    # Always allow login/logout and admin readonly toggle (needed to toggle readonly off)
+    # Always allow login/logout, readonly toggle, SSE stream, and auth check
     if request.url.path in ("/api/auth/login", "/api/auth/logout", "/api/auth/change-password", "/api/admin/readonly"):
         return await call_next(request)
     if request.url.path.startswith("/api/stream"):
         return await call_next(request)
-    
+    if request.url.path == "/api/auth/check":
+        return await call_next(request)
+
     # Dynamic readonly check — reads from both env var and DB
     if await get_readonly_from_db():
         return JSONResponse(status_code=403, content={"detail": "Read-only mode active"})
-    
-    # Auth check for mutating requests on all /api/ paths
-    if request.url.path.startswith("/api/") and not request.url.path.startswith("/api/auth"):
-        token = request.headers.get("Authorization", "").replace("Bearer ", "")
-        if not session_store.validate(token):
+
+    # Non-mutating requests (GET/HEAD/OPTIONS) are allowed without auth —
+    # the frontend uses plain fetch() for read operations.
+    if request.method in ("GET", "HEAD", "OPTIONS"):
+        return await call_next(request)
+
+    # All mutating requests require authentication
+    if request.url.path.startswith("/api/"):
+        token = get_token_from_request(request)
+        if not token or not session_store.validate(token):
             return JSONResponse(status_code=401, content={"detail": "Authentication required"})
-    
+
     return await call_next(request)
 
 
 @app.get("/api/readonly")
 async def get_readonly(request: Request):
-    token = request.headers.get("Authorization", "").replace("Bearer ", "")
+    token = get_token_from_request(request)
     authenticated = bool(token) and session_store.validate(token)
     readonly = await get_readonly_from_db()
     return {"readonly": readonly, "authenticated": authenticated}
@@ -216,8 +218,8 @@ async def get_readonly(request: Request):
 
 @app.post("/api/admin/readonly")
 async def post_readonly(request: Request):
-    token = request.headers.get("Authorization", "").replace("Bearer ", "")
-    if not session_store.validate(token):
+    token = get_token_from_request(request)
+    if not token or not session_store.validate(token):
         return JSONResponse(status_code=401, content={"detail": "Authentication required"})
     body = await request.json()
     value = bool(body.get("readonly", False))

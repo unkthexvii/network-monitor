@@ -524,3 +524,16 @@ div.vis-network div.vis-manipulation .vis-label, div.vis-network div.vis-edit-mo
     background: #1a1a1a !important;
     padding: 10px;
 }
+
+/* Pagination button hover (replaces inline onmouseover/onmouseout) */
+.btn-pagination:hover {
+    background: rgba(255,255,255,0.1) !important;
+}
+.btn-pagination:not(.active):hover {
+    color: #fff !important;
+}
+
+/* Link hover (replaces inline onmouseover/onmouseout) */
+.link-hover-green:hover {
+    color: var(--accent-green) !important;
+}

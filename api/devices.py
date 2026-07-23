@@ -319,27 +319,17 @@ async def edit_device(device_id: int, device: DeviceUpdate, session: AsyncSessio
         
     if old_enabled != updated.enabled:
         from database.models import Alert
-        from core.alert_engine import _notify_callback
-        
+        from core.alert_engine import build_alert_message, notify_state_change
+
         new_status = "PAUSED" if updated.enabled == 0 else "RESUMED"
-        msg = f"Monitoring for device {updated.name} ({updated.ip_address}) was {new_status.lower()}."
-        
-        alert = Alert(device_id=device_id, alert_type=new_status, message=msg)
+        old_status = "RESUMED" if updated.enabled == 0 else "PAUSED"
+        msg, alert_type = build_alert_message(old_status, new_status, updated)
+
+        alert = Alert(device_id=device_id, alert_type=alert_type, message=msg)
         session.add(alert)
         await session.commit()
-        
-        if _notify_callback:
-            event_data = {
-                "device_id": device_id,
-                "device_name": updated.name,
-                "status": new_status,
-                "message": msg,
-                "timestamp": datetime.now(timezone.utc).isoformat()
-            }
-            try:
-                await _notify_callback("status_change", event_data)
-            except Exception as e:
-                logger.warning(f"SSE notify failed for device {device_id}: {e}")
+
+        await notify_state_change(old_status, new_status, updated)
 
     from core.device_cache import device_cache
     await device_cache.refresh_from_db()
@@ -444,7 +434,8 @@ async def lan_sweep_worker(subnet: str):
             return
             
         ips = [str(ip) for ip in network.hosts()]
-        results = await ping_devices(ips, count=3, timeout=1.5)
+        from core.config import PING_COUNT
+        results = await ping_devices(ips, count=PING_COUNT, timeout=1.5)
         
         active_ips = [r["ip_address"] for r in results if r["status"] == "ONLINE"]
         

@@ -69,7 +69,7 @@ The core engines orchestrate network telemetry, threshold checks, debouncing, an
 
 ### Ping Buffer (`core/ping_buffer.py`)
 - Thread-safe in-memory buffer for 1-second ping samples.
-- Replaces the old raw_ping database table — reduces DB writes by ~98%.
+- Replaces per-second DB writes — reduces DB writes by ~98%.
 - Flushed every 60 seconds by the aggregator into MinuteStat rows.
 - Capped at 1000 samples per device (prevents unbounded growth).
 

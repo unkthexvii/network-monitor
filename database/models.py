@@ -40,7 +40,9 @@ class Device(Base):
     snmp_v3_auth = Column(String)
     snmp_v3_priv = Column(String)
 
-    latency_threshold_ms = Column(Integer, default=200)
+    # Float type — SQLite uses dynamic typing so existing Integer values
+    # in old databases are automatically readable as floats. No migration needed.
+    latency_threshold_ms = Column(Float, default=200.0)
     packet_loss_threshold = Column(Float, default=0.20)
     created_at = Column(DateTime, default=_utcnow, server_default=func.now())
     updated_at = Column(DateTime, default=_utcnow, onupdate=_utcnow, server_default=func.now())
@@ -48,28 +50,6 @@ class Device(Base):
     # Relationships
     status = relationship("DeviceStatus", back_populates="device", uselist=False, cascade="all, delete-orphan")
     alerts = relationship("Alert", back_populates="device", cascade="all, delete-orphan")
-
-    def to_dict(self):
-        return {
-            "id": self.id,
-            "name": self.name,
-            "ip_address": self.ip_address,
-            "site": self.site,
-            "location": self.location,
-            "rack": self.rack,
-            "device_type": self.device_type,
-            "vendor": self.vendor,
-            "model": self.model,
-            "enabled": self.enabled,
-            "remark": self.remark,
-            "snmp_version": self.snmp_version,
-            "snmp_community": "***" if self.snmp_community else None,
-            "snmp_v3_user": self.snmp_v3_user if self.snmp_v3_user else None,
-            "snmp_v3_auth": "***" if self.snmp_v3_auth else None,
-            "snmp_v3_priv": "***" if self.snmp_v3_priv else None,
-            "created_at": self.created_at.isoformat() if self.created_at else None,
-            "updated_at": self.updated_at.isoformat() if self.updated_at else None
-        }
 
 
 class TopologyTab(Base):

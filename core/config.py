@@ -17,7 +17,6 @@ OFFLINE_THRESHOLD = int(os.getenv("MONITOR_OFFLINE_THRESHOLD", "3"))
 ONLINE_THRESHOLD = int(os.getenv("MONITOR_ONLINE_THRESHOLD", "3"))
 
 # === Data Retention ===
-RAW_PING_RETENTION_DAYS = int(os.getenv("MONITOR_RETENTION_DAYS", "7"))
 MINUTE_STAT_RETENTION_DAYS = int(os.getenv("MONITOR_STAT_RETENTION_DAYS", "7"))
 EVENT_HISTORY_RETENTION_DAYS = int(os.getenv("MONITOR_EVENT_RETENTION_DAYS", "90"))
 
@@ -59,5 +58,8 @@ async def set_readonly_in_db(value: bool) -> None:
         await session.commit()
 
 # === Auth ===
-DEFAULT_ADMIN_PASSWORD = os.getenv("MONITOR_DEFAULT_PASSWORD", "admin")
+# If MONITOR_DEFAULT_PASSWORD is not set, generate a random password.
+# This prevents the insecure default of "admin" on first run.
+import secrets as _secrets
+DEFAULT_ADMIN_PASSWORD = os.getenv("MONITOR_DEFAULT_PASSWORD") or _secrets.token_urlsafe(12)
 SESSION_TTL = int(os.getenv("MONITOR_SESSION_HOURS", "24")) * 3600

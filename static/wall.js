@@ -25,7 +25,7 @@ document.addEventListener("DOMContentLoaded", () => {
   function fmtMsg(msg) {
     if (!msg) return "";
     // Remove redundant "Device <name> (<ip>)" text from standard messages
-    msg = msg.replace(/^Device\s+.*?\s+\(.*?\)\s+went\s+(.*?)\.?$/i, '$1');
+    msg = String(msg).replace(/^Device\s+.*?\s+\(.*?\)\s+went\s+(.*?)\.?$/i, '$1');
     msg = msg.replace(/^Monitoring for device\s+.*?\s+\(.*?\)\s+was\s+(.*?)\.?$/i, 'Monitoring was $1');
     return msg.replace(/\((Downtime|Paused for): (.*?)\)/g, '<span style="opacity:0.6">(</span><span style="opacity:0.6">$1: </span><span style="color:var(--paused); font-weight:bold">$2</span><span style="opacity:0.6">)</span>');
   }
@@ -37,7 +37,7 @@ document.addEventListener("DOMContentLoaded", () => {
   renderClock();
 
   function updateStats() {
-    fetch('/api/dashboard/stats')
+    fetch('/api/dashboard/stats', {credentials: 'include'})
       .then(r => r.json())
       .then(stats => {
         const elOffline = document.getElementById('wall-stat-offline');
@@ -232,7 +232,7 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   // Init Devices
-  fetch("/api/devices")
+  fetch("/api/devices", {credentials: 'include'})
     .then((r) => r.json())
     .then((data) => {
       data.forEach((d) => {
@@ -247,7 +247,7 @@ document.addEventListener("DOMContentLoaded", () => {
     .catch((e) => console.error("Init fetch error", e));
 
   // Init Alerts Feed
-  fetch("/api/dashboard/events?limit=50")
+  fetch("/api/dashboard/events?limit=50", {credentials: 'include'})
     .then((r) => r.json())
     .then((data) => {
       if (data && data.items && data.items.length > 0) {
@@ -280,7 +280,7 @@ document.addEventListener("DOMContentLoaded", () => {
     onConnected: function() {
       reconnectOverlay.classList.add('hidden');
       if (!initialSseConnect) {
-        fetch('/api/devices')
+        fetch('/api/devices', {credentials: 'include'})
           .then(function(r) { return r.json(); })
           .then(function(data) {
             data.forEach(function(d) { devicesMap.set(d.id, d); });
@@ -290,6 +290,8 @@ document.addEventListener("DOMContentLoaded", () => {
           .catch(function() {});
       }
       initialSseConnect = false;
+      // SSE is connected — stop the polling fallback
+      stopPolling();
     },
     onDenied: function(d) {
       reconnectOverlay.innerHTML =
@@ -321,7 +323,7 @@ document.addEventListener("DOMContentLoaded", () => {
           updateStats();
         }).catch(function() {});
 
-      fetch('/api/dashboard/events?limit=50')
+      fetch('/api/dashboard/events?limit=50', {credentials: 'include'})
         .then(function(r) { return r.json(); })
         .then(function(data) {
           if (data && data.items && data.items.length > 0) {
@@ -345,14 +347,16 @@ document.addEventListener("DOMContentLoaded", () => {
     if (_pollTimer) { clearInterval(_pollTimer); _pollTimer = null; }
   }
 
-  startPolling();
+  // Start polling as a fallback — give SSE 5 seconds to connect first
+  setTimeout(startPolling, 5000);
 
-  // Clean auto-scrolling feature
+  // Smooth auto-scrolling feature using requestAnimationFrame
   function autoScroll(el) {
     if (!el) return;
     let step = 1;
     let paused = false;
     let idleTimer;
+    let ticking = false;
 
     el.addEventListener('mousemove', () => {
       paused = true;
@@ -365,21 +369,50 @@ document.addEventListener("DOMContentLoaded", () => {
       clearTimeout(idleTimer);
     });
 
-    setInterval(() => {
-      if (paused || el.scrollHeight <= el.clientHeight) return;
+    function scrollTick() {
+      if (document.hidden || paused || el.scrollHeight <= el.clientHeight) {
+        ticking = false;
+        return;
+      }
 
       el.scrollTop += step;
 
       if (el.scrollTop + el.clientHeight >= el.scrollHeight) {
         step = -1;
         paused = true;
-        setTimeout(() => paused = false, 3000);
+        clearTimeout(idleTimer);
+        idleTimer = setTimeout(() => paused = false, 3000);
       } else if (el.scrollTop <= 0) {
         step = 1;
         paused = true;
-        setTimeout(() => paused = false, 3000);
+        clearTimeout(idleTimer);
+        idleTimer = setTimeout(() => paused = false, 3000);
       }
-    }, 40);
+
+      ticking = false;
+    }
+
+    function loop() {
+      if (!ticking) {
+        ticking = true;
+        requestAnimationFrame(scrollTick);
+      }
+      if (!document.hidden && !paused) {
+        requestAnimationFrame(loop);
+      } else {
+        // Re-poll when tab becomes visible again
+        setTimeout(loop, 1000);
+      }
+    }
+
+    // Pause scrolling when tab is hidden
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) {
+        clearTimeout(idleTimer);
+      }
+    });
+
+    loop();
   }
 
   autoScroll(outageList);

@@ -8,13 +8,11 @@ from core.icmp_engine import ping_devices
 from core.ping_buffer import ping_buffer, PingSample
 from core.device_cache import CachedDevice, device_cache
 from core.config import OFFLINE_THRESHOLD, ONLINE_THRESHOLD
+from core.alert_engine import build_alert_message, notify_state_change
 
 logger = logging.getLogger(__name__)
 
-# We will import the notify function lazily to avoid circular imports.
-_notify_callback = None
-
-# Global semaphore to limit concurrent chunk processing. 
+# Global semaphore to limit concurrent chunk processing.
 # 10 chunks * 50 devices = 500 max concurrent pings globally.
 _ping_chunk_semaphore = None
 
@@ -23,10 +21,6 @@ def _get_ping_chunk_semaphore():
     if _ping_chunk_semaphore is None:
         _ping_chunk_semaphore = asyncio.Semaphore(10)
     return _ping_chunk_semaphore
-
-def register_worker_notify(cb):
-    global _notify_callback
-    _notify_callback = cb
 
 async def _process_ping_chunk(devices: list):
     sem = _get_ping_chunk_semaphore()
@@ -57,7 +51,7 @@ async def _process_ping_chunk(devices: list):
             packet_loss=res["packet_loss"],
         )
 
-        cached_dev = device_cache.get_device(dev.id)
+        cached_dev = await device_cache.get_device(dev.id)
         if not cached_dev:
             continue
 
@@ -144,16 +138,11 @@ async def _process_ping_chunk(devices: list):
                 status_record.recovery_count = dev.recovery_count
 
             for dev, new_status, old_status in state_transitions:
-                # Generate Alert
-                if old_status == "UNKNOWN" and new_status == "ONLINE":
-                    message = f"Device Initialized: {dev.name} ({dev.ip_address})"
-                    alert_type = "INITIALIZED"
-                else:
-                    message = f"Device {dev.name} ({dev.ip_address}) went {new_status}."
-                    alert_type = new_status
-                    
+                # Generate Alert using the shared helper from alert_engine
+                message, alert_type = build_alert_message(old_status, new_status, dev)
+
                 logger.warning(message) if new_status == "OFFLINE" else logger.info(message)
-                
+
                 alert = Alert(
                     device_id=dev.id,
                     alert_type=alert_type,
@@ -165,31 +154,11 @@ async def _process_ping_chunk(devices: list):
             logger.info(f"State changes persisted for {len(db_updates)} devices")
 
         # Notify clients (SSE) AFTER DB commit
-        if _notify_callback:
-            for evt in sse_events_to_dispatch:
-                dev = evt["dev"]
-                old_status = evt["old_status"]
-                new_status = evt["new_status"]
-                
-                if old_status == "UNKNOWN" and new_status == "ONLINE":
-                    message = f"Device Initialized: {dev.name} ({dev.ip_address})"
-                    event_type = "INITIALIZED"
-                else:
-                    message = f"Device {dev.name} ({dev.ip_address}) went {new_status}."
-                    event_type = new_status
-                    
-                event_data = {
-                    "device_id": dev.id,
-                    "device_name": dev.name,
-                    "ip_address": dev.ip_address,
-                    "status": event_type,
-                    "message": message,
-                    "timestamp": datetime.now(timezone.utc).isoformat()
-                }
-                try:
-                    await _notify_callback("status_change", event_data)
-                except Exception as e:
-                    logger.warning(f"SSE notify failed for device {dev.id}: {e}")
+        for evt in sse_events_to_dispatch:
+            dev = evt["dev"]
+            old_status = evt["old_status"]
+            new_status = evt["new_status"]
+            await notify_state_change(old_status, new_status, dev)
 
 async def ping_worker(devices: list):
     """

@@ -16,18 +16,12 @@ from database.models import Device, DeviceStatus
 
 logger = logging.getLogger("SNMPEngine")
 
-_snmp_engine = None
-
-def _get_engine():
-    global _snmp_engine
-    if _snmp_engine is None:
-        _snmp_engine = SnmpEngine()
-    return _snmp_engine
-
 
 async def fetch_snmp_data(device_ip, snmp_version, community=None, v3_user=None, v3_auth=None, v3_priv=None, device_type=None, device_name=None):
     """
     Fetches sysName, sysDescr, and sysUpTime from the target device.
+    Creates a fresh SnmpEngine per call to avoid concurrency issues with
+    PySNMP's internal state when multiple coroutines poll simultaneously.
     """
     auth_data = None
     if snmp_version == "v2c" and community:
@@ -52,8 +46,9 @@ async def fetch_snmp_data(device_ip, snmp_version, community=None, v3_user=None,
         logger.info(f"SNMP TRY {device_ip} v={snmp_version} comm={comm_masked} name={device_name or '-'}")
 
         t_start = time.monotonic()
+        engine = SnmpEngine()
         _result = await getCmd(
-            _get_engine(),
+            engine,
             auth_data,
             UdpTransportTarget((device_ip, 161), timeout=2, retries=1),
             ContextData(),
@@ -144,7 +139,7 @@ async def fetch_snmp_data(device_ip, snmp_version, community=None, v3_user=None,
                 
             if extra_oids:
                 _res2 = await getCmd(
-                    _get_engine(),
+                    engine,
                     auth_data,
                     UdpTransportTarget((device_ip, 161), timeout=2, retries=1),
                     ContextData(),
@@ -159,61 +154,57 @@ async def fetch_snmp_data(device_ip, snmp_version, community=None, v3_user=None,
                         cls = val.__class__.__name__
                         if cls not in ('NoSuchObject', 'NoSuchInstance', 'EndOfMibView'):
                             val_str = val.prettyPrint()
-                            # ── Base OIDs ──
-                            if '1.1.4.0' in oid:          # sysContact
-                                custom_data['Contact'] = val_str
-                            elif '1.1.6.0' in oid:        # sysLocation
-                                custom_data['Location'] = val_str
-                            elif '1.2.1.0' in oid and '2.1' in oid and '1.3.6.1.2.1.2.1' in oid:  # ifNumber
+                            # ── Base OIDs (use endswith for precise suffix matching) ──
+                            if oid.endswith('1.3.6.1.2.1.2.1.0'):  # ifNumber
                                 custom_data['Interfaces'] = val_str
-                            elif '47.1.1.1.1.11.1' in oid:  # entPhysicalSerialNum
+                            elif oid.endswith('1.3.6.1.2.1.47.1.1.1.1.11.1'):  # entPhysicalSerialNum
                                 result['serial_number'] = val_str
-                            elif '47.1.1.1.1.13.1' in oid:  # entPhysicalModelName
+                            elif oid.endswith('1.3.6.1.2.1.47.1.1.1.1.13.1'):  # entPhysicalModelName
                                 custom_data['Model Name'] = val_str
-                            elif '47.1.1.1.1.7.1' in oid:   # entPhysicalName
+                            elif oid.endswith('1.3.6.1.2.1.47.1.1.1.1.7.1'):   # entPhysicalName
                                 custom_data['Chassis Name'] = val_str
                             # ── WLC client count (first match wins, skip others) ──
-                            elif '14179.2.1.1.1.0' in oid:
+                            elif oid.endswith('1.3.6.1.4.1.14179.2.1.1.1.0'):
                                 try: result['client_count'] = int(val_str)
                                 except (ValueError, TypeError) as e: logger.debug(f"SNMP parse client_count for {device_ip}: {e}")
-                            elif '14179.2.1.1.1.38' in oid and 'client_count' not in result:
+                            elif oid.endswith('1.3.6.1.4.1.14179.2.1.1.1.38') and 'client_count' not in result:
                                 try: result['client_count'] = int(val_str)
                                 except (ValueError, TypeError) as e: logger.debug(f"SNMP parse client_count for {device_ip}: {e}")
-                            elif '9.9.618.1.8.4.0' in oid and 'client_count' not in result:
+                            elif oid.endswith('1.3.6.1.4.1.9.9.618.1.8.4.0') and 'client_count' not in result:
                                 try: result['client_count'] = int(val_str)
                                 except (ValueError, TypeError) as e: logger.debug(f"SNMP parse client_count for {device_ip}: {e}")
                             # ── WLC AP count ──
-                            elif '14179.2.1.1.1.19' in oid:
+                            elif oid.endswith('1.3.6.1.4.1.14179.2.1.1.1.19'):
                                 try: result['ap_count'] = int(val_str)
                                 except (ValueError, TypeError) as e: logger.debug(f"SNMP parse ap_count for {device_ip}: {e}")
                             # ── Switch/router (Cisco) ──
-                            elif '9.9.109.1.1.1.1.7.1' in oid:
+                            elif oid.endswith('1.3.6.1.4.1.9.9.109.1.1.1.1.7.1'):
                                 custom_data['CPU 5min %'] = val_str
-                            elif '9.9.48.1.1.1.5.1' in oid:
+                            elif oid.endswith('1.3.6.1.4.1.9.9.48.1.1.1.5.1'):
                                 custom_data['Mem Used'] = val_str
-                            elif '9.9.48.1.1.1.6.1' in oid:
+                            elif oid.endswith('1.3.6.1.4.1.9.9.48.1.1.1.6.1'):
                                 custom_data['Mem Free'] = val_str
-                            elif '9.9.13.1.3.1.3.1' in oid:
+                            elif oid.endswith('1.3.6.1.4.1.9.9.13.1.3.1.3.1'):
                                 custom_data['Temperature'] = val_str
                             # ── UPS ──
-                            elif '33.1.2.1.0' in oid:
+                            elif oid.endswith('1.3.6.1.2.1.33.1.2.1.0'):
                                 status_map = {'1': 'Unknown', '2': 'Normal', '3': 'Low', '4': 'Depleted'}
                                 custom_data['Battery Status'] = status_map.get(val_str, f"Code {val_str}")
-                            elif '33.1.2.4.0' in oid:
+                            elif oid.endswith('1.3.6.1.2.1.33.1.2.4.0'):
                                 custom_data['Battery Level'] = f"{val_str}%"
                             # ── Printer ──
-                            elif '43.11.1.1.9.1.1' in oid:
+                            elif oid.endswith('1.3.6.1.2.1.43.11.1.1.9.1.1'):
                                 custom_data['Toner Level'] = f"{val_str}%"
-                            elif '43.10.2.1.4.1.1' in oid:
+                            elif oid.endswith('1.3.6.1.2.1.43.10.2.1.4.1.1'):
                                 custom_data['Pages Printed'] = val_str
-                            elif '43.5.1.1.17.1' in oid:
+                            elif oid.endswith('1.3.6.1.2.1.43.5.1.1.17.1'):
                                 custom_data['Printer Name'] = val_str
                             # ── Server ──
-                            elif '25.3.3.1.2.1' in oid:
+                            elif oid.endswith('1.3.6.1.2.1.25.3.3.1.2.1'):
                                 custom_data['CPU Load %'] = f"{val_str}%"
-                            elif '25.2.3.1.5.1' in oid:
+                            elif oid.endswith('1.3.6.1.2.1.25.2.3.1.5.1'):
                                 custom_data['Storage Total'] = val_str
-                            elif '25.2.3.1.6.1' in oid:
+                            elif oid.endswith('1.3.6.1.2.1.25.2.3.1.6.1'):
                                 custom_data['Storage Used'] = val_str
                         else:
                             logger.debug(f"SNMP OID skipped for {device_ip}: {oid} = {cls}")

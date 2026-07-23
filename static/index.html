@@ -44,11 +44,11 @@
             <img class="logo-img" src="/api/logo" alt="Logo" onerror="this.style.display='none'; document.getElementById('fallback-logo').style.display='flex';">
             <div id="fallback-logo" class="logo" style="display: none;">IN</div>
         </div>
-        <a href="javascript:void(0)" onclick="navigateTo('dashboard')" class="nav-icon active" id="nav-dashboard" title="Dashboard"><i class="bi bi-grid-1x2"></i></a>
-        <a href="javascript:void(0)" onclick="navigateTo('topology')" class="nav-icon" id="nav-topology" title="Topology"><i class="bi bi-share"></i></a>
-        <a href="javascript:void(0)" onclick="navigateTo('devices')" class="nav-icon" id="nav-devices" title="Devices"><i class="bi bi-hdd-network"></i></a>
-        <a href="javascript:void(0)" onclick="navigateTo('alerts')" class="nav-icon" id="nav-alerts" title="Alerts"><i class="bi bi-bell"></i></a>
-        <a href="javascript:void(0)" onclick="navigateTo('reports')" class="nav-icon" id="nav-reports" title="Reports"><i class="bi bi-file-earmark-bar-graph"></i></a>
+        <a href="javascript:void(0)" data-nav="dashboard" class="nav-icon active" id="nav-dashboard" title="Dashboard"><i class="bi bi-grid-1x2"></i></a>
+        <a href="javascript:void(0)" data-nav="topology" class="nav-icon" id="nav-topology" title="Topology"><i class="bi bi-share"></i></a>
+        <a href="javascript:void(0)" data-nav="devices" class="nav-icon" id="nav-devices" title="Devices"><i class="bi bi-hdd-network"></i></a>
+        <a href="javascript:void(0)" data-nav="alerts" class="nav-icon" id="nav-alerts" title="Alerts"><i class="bi bi-bell"></i></a>
+        <a href="javascript:void(0)" data-nav="reports" class="nav-icon" id="nav-reports" title="Reports"><i class="bi bi-file-earmark-bar-graph"></i></a>
         <div class="nav-bottom">
             <a href="/wall" target="_blank" class="nav-icon" title="Big Screen (NOC Wall)" style="color: #b2ff59;"><i class="bi bi-tv"></i></a>
             <a href="javascript:void(0)" id="btnChangePw" class="nav-icon" title="Change Password" style="display:none; color: #888;"><i class="bi bi-gear"></i></a>
@@ -118,7 +118,7 @@
                         <div class="widget-card d-flex flex-column w-100">
                             <div class="card-header">
                                 <h2 class="card-title mb-0">Recent Events (24H)</h2>
-                                <a href="/alerts" class="text-decoration-none text-secondary" style="font-size: 0.8rem; transition: color 0.2s;" onmouseover="this.style.color='#b2ff59'" onmouseout="this.style.color='var(--text-secondary)'">Full History &rarr;</a>
+                                <a href="/alerts" class="text-decoration-none text-secondary link-hover-green" style="font-size: 0.8rem; transition: color 0.2s;">Full History &rarr;</a>
                             </div>
                             <ul class="feed-list" id="events-feed">
                                 <li class="feed-item text-secondary">Loading events...</li>
@@ -148,7 +148,7 @@
                 <div class="d-flex align-items-center mb-3 border-bottom pb-2 gap-2" style="border-color: #333 !important;">
                     <div class="input-group input-group-sm dropdown flex-grow-1" style="max-width: 300px;">
                         <input type="text" class="form-control bg-transparent text-white border-secondary shadow-none dropdown-toggle fw-bold" id="topologySiteSearchInput" data-bs-toggle="dropdown" aria-expanded="false" placeholder="Search Locations" style="border-color: #333 !important;" autocomplete="off">
-                        <button class="btn btn-outline-secondary" style="border-color: #333 !important; color: #888;" type="button" onclick="var inp=document.getElementById('topologySiteSearchInput'); inp.value=''; inp.focus(); inp.dispatchEvent(new Event('input'));" title="Clear Search">
+                        <button class="btn btn-outline-secondary" style="border-color: #333 !important; color: #888;" type="button" data-clear-search="topologySiteSearchInput" title="Clear Search">
                             <i class="bi bi-x"></i>
                         </button>
                         <div class="dropdown-menu dropdown-menu-dark shadow w-100 p-2" style="background-color: #1a1a1a; border-color: #333;">
@@ -176,7 +176,7 @@
                             </button>
                         </div>
                         <div class="d-flex gap-2 order-1 order-lg-2 justify-content-start justify-content-lg-end">
-                            <button class="btn btn-outline-info d-flex align-items-center gap-2 text-nowrap" style="border-radius: 50px; border-color: #333; color: white;" onclick="window.location.href='/api/devices/export/csv'">
+                            <button class="btn btn-outline-info d-flex align-items-center gap-2 text-nowrap" style="border-radius: 50px; border-color: #333; color: white;" data-action="export-csv">
                                 <i class="bi bi-filetype-csv"></i> Export CSV
                             </button>
                             <button class="btn btn-outline-secondary d-flex align-items-center gap-2 text-nowrap" style="border-radius: 50px; border-color: #333; color: white;" data-bs-toggle="modal" data-bs-target="#discoverLanModal">
@@ -195,7 +195,7 @@
                                 <div class="d-flex gap-3 text-secondary">
                                     <div class="input-group input-group-sm dropdown" style="width: 250px;">
                                         <input type="text" class="form-control bg-transparent text-white border-secondary shadow-none dropdown-toggle" id="devicesPageSearchInput" data-bs-toggle="dropdown" aria-expanded="false" placeholder="Search Devices" style="border-color: #333 !important;" autocomplete="off">
-                                        <button class="btn btn-outline-secondary" style="border-color: #333 !important; color: #888;" type="button" onclick="document.getElementById('devicesPageSearchInput').value=''; document.getElementById('devicesPageSearchInput').dispatchEvent(new Event('input'))" title="Clear Search">
+                                        <button class="btn btn-outline-secondary" style="border-color: #333 !important; color: #888;" type="button" data-clear-search="devicesPageSearchInput" title="Clear Search">
                                             <i class="bi bi-x"></i>
                                         </button>
                                         <div class="dropdown-menu dropdown-menu-dark shadow w-100 p-2" style="background-color: #1a1a1a; border-color: #333;">
@@ -252,7 +252,7 @@
                       <div class="d-flex flex-wrap mb-3 gap-2">
                           <div class="input-group input-group-sm dropdown" style="width: 250px;">
                                         <input type="text" class="form-control bg-transparent text-white border-secondary shadow-none dropdown-toggle" id="alertsPageSearchInput" data-bs-toggle="dropdown" aria-expanded="false" placeholder="Search Devices" style="border-color: #333 !important;" autocomplete="off">
-                                        <button class="btn btn-outline-secondary" style="border-color: #333 !important; color: #888;" type="button" onclick="document.getElementById('alertsPageSearchInput').value=''; document.getElementById('alertsPageSearchInput').dispatchEvent(new Event('input'))" title="Clear Search">
+                                        <button class="btn btn-outline-secondary" style="border-color: #333 !important; color: #888;" type="button" data-clear-search="alertsPageSearchInput" title="Clear Search">
                                             <i class="bi bi-x"></i>
                                         </button>
                                         <div class="dropdown-menu dropdown-menu-dark shadow w-100 p-2" style="background-color: #1a1a1a; border-color: #333;">
@@ -301,7 +301,7 @@
                     <div class="col-12 col-lg d-flex flex-wrap justify-content-lg-end gap-2">
                         <div class="input-group input-group-sm dropdown" style="width: 200px; flex-shrink: 0;">
                                         <input type="text" class="form-control bg-transparent text-white border-secondary shadow-none dropdown-toggle" id="reportDeviceSearchInput" data-bs-toggle="dropdown" aria-expanded="false" placeholder="Search Devices" style="border-color: #333 !important;" autocomplete="off">
-                                        <button class="btn btn-outline-secondary" style="border-color: #333 !important; color: #888;" type="button" onclick="document.getElementById('reportDeviceSearchInput').value=''; document.getElementById('reportDeviceSearchInput').dispatchEvent(new Event('input'))" title="Clear Search">
+                                        <button class="btn btn-outline-secondary" style="border-color: #333 !important; color: #888;" type="button" data-clear-search="reportDeviceSearchInput" title="Clear Search">
                                             <i class="bi bi-x"></i>
                                         </button>
                                         <div class="dropdown-menu dropdown-menu-dark shadow w-100 p-2" style="background-color: #1a1a1a; border-color: #333;">
@@ -468,7 +468,7 @@
                             </div>
                             <div class="col-5">
                                 <label class="form-label text-secondary" style="font-size: 0.85rem; font-weight: 500;">Check Interval (s)</label>
-                                <input type="number" min="1" class="form-control bg-transparent text-white" id="newDeviceInterval" value="1" style="border-color: #333; box-shadow: none;">
+                                <input type="number" min="10" class="form-control bg-transparent text-white" id="newDeviceInterval" value="60" style="border-color: #333; box-shadow: none;">
                             </div>
                         </div>
 
@@ -615,7 +615,7 @@
                     <div class="mb-3">
                         <div class="input-group input-group-sm">
                             <input type="text" class="form-control" id="searchTopologyDevice" placeholder="Search Devices" style="background: rgba(0,0,0,0.2); border-color: #333; color: white;" autocomplete="off">
-                            <button class="btn btn-outline-secondary" style="border-color: #333 !important; color: #888;" type="button" onclick="document.getElementById('searchTopologyDevice').value=''; document.getElementById('searchTopologyDevice').dispatchEvent(new Event('input'))" title="Clear Search">
+                            <button class="btn btn-outline-secondary" style="border-color: #333 !important; color: #888;" type="button" data-clear-search="searchTopologyDevice" title="Clear Search">
                                 <i class="bi bi-x"></i>
                             </button>
                         </div>
@@ -808,7 +808,7 @@
                         </div>
                         <div class="col-5">
                             <label class="form-label text-secondary small mb-1">Check Int. (s)</label>
-                            <input type="number" min="1" id="editInterval" class="form-control bg-transparent text-white shadow-none" value="1" style="border-color: #333 !important;">
+                            <input type="number" min="10" id="editInterval" class="form-control bg-transparent text-white shadow-none" value="60" style="border-color: #333 !important;">
                         </div>
                     </div>
                       <div class="mb-3">
@@ -911,11 +911,11 @@
                     </div>
                     <div class="mb-3">
                         <label class="form-label text-secondary small">Confirm New Password</label>
-                        <input type="password" class="form-control bg-transparent text-white border-secondary shadow-none" id="changePwConfirm" style="border-color: #333 !important;" autocomplete="off" minlength="4" onkeydown="if(event.key==='Enter') doChangePassword()">
+                        <input type="password" class="form-control bg-transparent text-white border-secondary shadow-none" id="changePwConfirm" style="border-color: #333 !important;" autocomplete="off" minlength="4" data-action="change-password-on-enter">
                     </div>
                     <div id="changePwError" class="text-danger small d-none mb-2">Failed to change password</div>
                     <div id="changePwSuccess" class="text-success small d-none mb-2">Password changed successfully</div>
-                    <button class="btn btn-primary w-100" onclick="doChangePassword()" id="changePwBtn">Change Password</button>
+                    <button class="btn btn-primary w-100" data-action="change-password" id="changePwBtn">Change Password</button>
                 </div>
             </div>
         </div>
@@ -932,10 +932,10 @@
                 <div class="modal-body">
                     <div class="mb-3">
                         <label class="form-label text-secondary small">Admin Password</label>
-                        <input type="password" class="form-control bg-transparent text-white border-secondary shadow-none" id="loginPassword" style="border-color: #333 !important;" autocomplete="off" onkeydown="if(event.key==='Enter') doLogin()">
+                        <input type="password" class="form-control bg-transparent text-white border-secondary shadow-none" id="loginPassword" style="border-color: #333 !important;" autocomplete="off" data-action="login-on-enter">
                     </div>
                     <div id="loginError" class="text-danger small d-none mb-2">Invalid password</div>
-                    <button class="btn btn-primary w-100" onclick="doLogin()" id="loginBtn">Login</button>
+                    <button class="btn btn-primary w-100" data-action="login" id="loginBtn">Login</button>
                 </div>
             </div>
         </div>

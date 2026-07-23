@@ -34,7 +34,7 @@ async def schedule_pings():
     tick += 1
 
     # Read device list from in-memory cache (ZERO database queries)
-    enabled = device_cache.get_enabled_devices()
+    enabled = await device_cache.get_enabled_devices()
 
     due_devices = []
     now = time.monotonic()
@@ -68,7 +68,10 @@ async def schedule_pings():
 
     if due_devices:
         # Fire and forget! The ping_worker will clear the is_pinging flag when done.
-        asyncio.create_task(ping_worker(due_devices))
+        # Store the task reference and attach an exception handler to prevent
+        # "Task exception was never retrieved" errors.
+        task = asyncio.create_task(ping_worker(due_devices))
+        task.add_done_callback(_handle_task_exception)
 
 
 async def aggregate_minute_stats():
@@ -128,7 +131,7 @@ async def aggregate_minute_stats():
                 if count_lat == 0:
                     min_latency = 0.0
 
-                cached_dev = device_cache.get_device(device_id)
+                cached_dev = await device_cache.get_device(device_id)
                 check_interval = cached_dev.check_interval if cached_dev else 60
 
                 # Uptime calculation (debounce-aware)
@@ -174,16 +177,27 @@ async def refresh_device_cache():
         logger.error(f"Device cache refresh failed: {e}", exc_info=True)
 
 
+async def cleanup_sessions():
+    """Remove expired sessions from the in-memory session store."""
+    try:
+        from core.auth import session_store
+        removed = session_store.cleanup()
+        if removed:
+            logger.info(f"Session cleanup: removed {removed} expired session(s)")
+    except Exception as e:
+        logger.error(f"Session cleanup failed: {e}", exc_info=True)
+
+
 async def cleanup_old_data():
     """Archive old records into monthly databases before deleting to prevent unbounded database growth."""
     import calendar
     import os
     import aiosqlite
-    from core.config import DATABASE_URL, RAW_PING_RETENTION_DAYS, MINUTE_STAT_RETENTION_DAYS, EVENT_HISTORY_RETENTION_DAYS
+    from core.config import DATABASE_URL, MINUTE_STAT_RETENTION_DAYS, EVENT_HISTORY_RETENTION_DAYS
 
     # Whitelist of allowed table/column names — must match the hardcoded values below.
     # These are interpolated into SQL via f-strings, so they MUST stay in this list.
-    _ALLOWED_TABLES = {"raw_ping", "minute_stats", "alerts"}
+    _ALLOWED_TABLES = {"minute_stats", "alerts"}
     _ALLOWED_COLS = {"ts", "minute", "created_at"}
 
     def _validate_ident(name: str, allowed: set) -> str:
@@ -202,7 +216,6 @@ async def cleanup_old_data():
         now = datetime.now(timezone.utc).replace(tzinfo=None)
         
         tables_to_archive = [
-            ("raw_ping", now - timedelta(days=RAW_PING_RETENTION_DAYS), "ts"),
             ("minute_stats", now - timedelta(days=MINUTE_STAT_RETENTION_DAYS), "minute"),
             ("alerts", now - timedelta(days=EVENT_HISTORY_RETENTION_DAYS), "created_at")
         ]
@@ -271,7 +284,12 @@ async def run_wal_checkpoint():
 
 
 async def vacuum_db():
-    """Weekly VACUUM to reclaim disk space after cleanup deletes old rows."""
+    """
+    Weekly VACUUM to reclaim disk space after cleanup deletes old rows.
+    Scheduled during low-traffic hours (Sunday 2 AM) to minimize the impact
+    of VACUUM's exclusive lock. VACUUM requires exclusive access to the
+    database, so it is intentionally run when monitoring traffic is lowest.
+    """
     from sqlalchemy import text
     try:
         async with async_session() as session:
@@ -358,11 +376,15 @@ def start_scheduler():
     # Daily database cleanup
     scheduler.add_job(cleanup_old_data, 'interval', days=1, id='db_cleanup')
 
-    # Weekly vacuum to reclaim disk space
-    scheduler.add_job(vacuum_db, 'interval', weeks=1, id='db_vacuum')
+    # Weekly vacuum to reclaim disk space — scheduled for Sunday 2 AM (low traffic)
+    # VACUUM requires exclusive access, so it runs when monitoring activity is minimal.
+    scheduler.add_job(vacuum_db, 'cron', day_of_week=6, hour=2, minute=0, id='db_vacuum')
 
     # Hourly log file cleanup (rotated backups older than 24h)
     scheduler.add_job(purge_logs, 'interval', hours=1, id='log_purge')
+
+    # Session cleanup every 6 hours
+    scheduler.add_job(cleanup_sessions, 'interval', hours=6, id='session_cleanup')
 
     scheduler.start()
     logger.info("Scheduler started: ping_poller (1s), minute_aggregator (1m), cache_refresh (30s), wal_checkpoint (5m), snmp_poller (5m), db_vacuum (1w), log_purge (1h)")
