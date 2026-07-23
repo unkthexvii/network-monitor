@@ -1,9 +1,14 @@
 """Integration tests against the running server (localhost:8000).
-These require the NetworkMonitor_Win7.exe to be running."""
+These require the NetworkMonitor_Win7.exe to be running.
+Set MONITOR_DEFAULT_PASSWORD env var to match the server's default password."""
 import httpx
 import pytest
+import os
 
 BASE = "http://localhost:8000"
+# The server uses MONITOR_DEFAULT_PASSWORD env var or generates a random one.
+# For tests, set MONITOR_DEFAULT_PASSWORD=admin when starting the server.
+ADMIN_PASSWORD = os.getenv("MONITOR_DEFAULT_PASSWORD", "admin")
 
 
 @pytest.fixture(scope="module")
@@ -13,19 +18,12 @@ def client():
 
 
 @pytest.fixture(scope="module")
-def auth_token(client):
-    """Login and return a session token."""
-    r = client.post("/api/auth/login", json={"password": "admin"})
+def auth_client(client):
+    """Login and return an authenticated client (cookie-based auth)."""
+    r = client.post("/api/auth/login", json={"password": ADMIN_PASSWORD})
     if r.status_code == 200:
-        return r.json().get("token")
-    return None
-
-
-@pytest.fixture(scope="module")
-def auth_headers(auth_token):
-    if auth_token:
-        return {"Authorization": f"Bearer {auth_token}"}
-    return {}
+        return client  # httpx.Client persists cookies automatically
+    return client
 
 
 # ── Readonly endpoint (no auth required) ──
@@ -46,9 +44,9 @@ def test_login_wrong_password(client):
 
 
 def test_login_correct_password(client):
-    r = client.post("/api/auth/login", json={"password": "admin"})
+    r = client.post("/api/auth/login", json={"password": ADMIN_PASSWORD})
     assert r.status_code == 200
-    assert "token" in r.json()
+    assert "auth_token" in r.cookies  # httpOnly cookie is set
 
 
 def test_protected_endpoint_no_auth(client):
@@ -57,8 +55,8 @@ def test_protected_endpoint_no_auth(client):
     assert r.status_code == 200
 
 
-def test_protected_endpoint_with_auth(client, auth_headers):
-    r = client.get("/api/devices", headers=auth_headers)
+def test_protected_endpoint_with_auth(auth_client):
+    r = auth_client.get("/api/devices")
     assert r.status_code == 200
 
 
