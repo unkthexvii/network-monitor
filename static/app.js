@@ -321,6 +321,7 @@
         btn.innerText = 'Changing...';
         authFetch('/api/auth/change-password', {
             method: 'POST',
+            headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({current_password: currentPw.value, new_password: newPw.value})
         }).then(r => {
             if (r.ok) return r.json();
