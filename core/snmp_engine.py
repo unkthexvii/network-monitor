@@ -254,11 +254,34 @@ async def poll_all_devices():
                         device_name=device.name
                     )
                 )
-                
-            results = await asyncio.wait_for(
-                asyncio.gather(*tasks, return_exceptions=True),
-                timeout=30.0
-            )
+
+            # Store the gather future so we can retrieve its exception after
+            # wait_for cancels it on timeout. Without this, asyncio logs a
+            # "_GatheringFuture exception was never retrieved" warning because
+            # the CancelledError set on the gather future is never consumed.
+            gather_future = asyncio.gather(*tasks, return_exceptions=True)
+            try:
+                results = await asyncio.wait_for(gather_future, timeout=30.0)
+            except asyncio.TimeoutError:
+                logger.warning(
+                    f"SNMP poll timed out after 30s for {len(devices)} device(s) — "
+                    f"cancelling remaining tasks"
+                )
+                # wait_for already cancelled gather_future; awaiting it
+                # retrieves the CancelledError and silences the asyncio warning.
+                try:
+                    await gather_future
+                except BaseException:
+                    pass
+                return
+            except asyncio.CancelledError:
+                # The poll_all_devices task itself was cancelled (e.g. during
+                # shutdown). Ensure the gather future's exception is retrieved.
+                try:
+                    await gather_future
+                except BaseException:
+                    pass
+                raise
 
             # Fetch all DeviceStatus records in chunked queries to avoid SQLite's 999-variable limit
             device_ids = [d.id for d, r in zip(devices, results) if isinstance(r, dict)]
@@ -288,5 +311,10 @@ async def poll_all_devices():
                             if 'custom_data' in data: status.snmp_custom_data = data.get('custom_data')
             
             await db.commit()
+    except asyncio.CancelledError:
+        # In Python 3.9+, CancelledError is a BaseException, not an Exception,
+        # so the handler below does not catch it. Re-raise to propagate cancellation.
+        logger.info("SNMP poll cycle cancelled")
+        raise
     except Exception as e:
-        logger.error(f"Error in SNMP poll cycle: {e}")
+        logger.error(f"Error in SNMP poll cycle: {type(e).__name__}: {e}")
