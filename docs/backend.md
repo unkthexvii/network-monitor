@@ -109,6 +109,7 @@ The core engines orchestrate network telemetry, threshold checks, debouncing, an
 FastAPI handles REST requests and streams Server-Sent Events.
 
 - **`devices.py`**: CRUD devices (`GET`, `POST`, `PUT`, `DELETE` `/api/devices`). LAN discovery (`/api/devices/discover`), CSV export, paginated listing with status/search/subnet filters. Input validation via Pydantic validators (IP address, check interval, CIDR subnet). SNMP test endpoint (`/api/test/snmp/{device_id}`) with masked community string.
+- **`auth.py`**: Authentication endpoints (`POST /api/auth/login`, `POST /api/auth/logout`, `GET /api/auth/check`, `POST /api/auth/change-password`). Password hashing via salted SHA-256, httpOnly cookie session store with configurable TTL. Default password set via `MONITOR_DEFAULT_PASSWORD` env var on first run.
 - **`dashboard.py`**: Network health statistics, recent events feed (paginated, 24h window), offline device listing.
 - **`alerts.py`**: Fetches paginated alert history with time/status/device filtering. Supports grouped-by-device or per-device views.
 - **`topology.py`**: CRUD for topology tabs, nodes (positioned devices), and links (connections between devices). Icon type mapping by device category.
