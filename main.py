@@ -215,9 +215,13 @@ async def auth_guard(request, call_next):
         "/api/logo",
         "/favicon.ico",
         "/api/devices/names",
+        "/api/devices/paginated",
+        "/api/devices/subnets",
         "/api/dashboard/stats",
         "/api/dashboard/events",
-        "/api/devices/subnets",
+        "/api/alerts",
+        "/api/topology",
+        "/api/reports/ui_data",
     }
     if request.method in ("GET", "HEAD", "OPTIONS") and request.url.path in _PUBLIC_GET_PATHS:
         return await call_next(request)
