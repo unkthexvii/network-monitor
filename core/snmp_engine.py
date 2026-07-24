@@ -255,33 +255,66 @@ async def poll_all_devices():
                     )
                 )
 
-            # Store the gather future so we can retrieve its exception after
-            # wait_for cancels it on timeout. Without this, asyncio logs a
-            # "_GatheringFuture exception was never retrieved" warning because
-            # the CancelledError set on the gather future is never consumed.
-            gather_future = asyncio.gather(*tasks, return_exceptions=True)
-            try:
-                results = await asyncio.wait_for(gather_future, timeout=30.0)
-            except asyncio.TimeoutError:
+            # Use asyncio.wait() instead of asyncio.wait_for(gather()) so we
+            # can retrieve partial results from devices that responded before
+            # the timeout. asyncio.wait_for cancels the entire gather on timeout,
+            # discarding all results. asyncio.wait returns (done, pending) sets
+            # and leaves pending tasks running for a retry.
+            #
+            # Retry strategy:
+            #   1. First pass: 30s timeout (per-device SNMP timeout is 2s with 1 retry)
+            #   2. Second pass: 60s timeout for devices that didn't respond in pass 1
+            #   3. After pass 2: cancel any remaining tasks, log affected devices
+            SNMP_POLL_TIMEOUT_1 = 30.0
+            SNMP_POLL_TIMEOUT_2 = 60.0
+
+            done, pending = await asyncio.wait(tasks, timeout=SNMP_POLL_TIMEOUT_1)
+
+            if pending:
+                timed_out_ips = [
+                    devices[i].ip_address
+                    for i, t in enumerate(tasks) if t in pending
+                ]
                 logger.warning(
-                    f"SNMP poll timed out after 30s for {len(devices)} device(s) — "
-                    f"cancelling remaining tasks"
+                    f"SNMP poll: {len(pending)}/{len(devices)} device(s) timed out "
+                    f"after {SNMP_POLL_TIMEOUT_1}s — retrying with "
+                    f"{SNMP_POLL_TIMEOUT_2}s timeout. Affected: {timed_out_ips[:10]}"
                 )
-                # wait_for already cancelled gather_future; awaiting it
-                # retrieves the CancelledError and silences the asyncio warning.
-                try:
-                    await gather_future
-                except BaseException:
-                    pass
-                return
-            except asyncio.CancelledError:
-                # The poll_all_devices task itself was cancelled (e.g. during
-                # shutdown). Ensure the gather future's exception is retrieved.
-                try:
-                    await gather_future
-                except BaseException:
-                    pass
-                raise
+                # Retry only the pending tasks with a longer timeout.
+                # asyncio.wait does not cancel pending tasks on timeout,
+                # so they are still running and can be awaited again.
+                retry_done, retry_pending = await asyncio.wait(
+                    pending, timeout=SNMP_POLL_TIMEOUT_2
+                )
+                done = done | retry_done
+
+                if retry_pending:
+                    still_pending_ips = [
+                        devices[i].ip_address
+                        for i, t in enumerate(tasks) if t in retry_pending
+                    ]
+                    logger.error(
+                        f"SNMP poll: {len(retry_pending)} device(s) still unreachable "
+                        f"after retry. IPs: {still_pending_ips[:10]}"
+                    )
+                    # Cancel remaining tasks to prevent resource leaks
+                    for task in retry_pending:
+                        task.cancel()
+                    # Retrieve CancelledError from cancelled tasks
+                    await asyncio.gather(*retry_pending, return_exceptions=True)
+
+            # Build results list: None for timed-out/cancelled tasks
+            results = []
+            for task in tasks:
+                if task in done:
+                    try:
+                        results.append(task.result())
+                    except asyncio.CancelledError:
+                        results.append(None)
+                    except Exception:
+                        results.append(None)
+                else:
+                    results.append(None)
 
             # Fetch all DeviceStatus records in chunked queries to avoid SQLite's 999-variable limit
             device_ids = [d.id for d, r in zip(devices, results) if isinstance(r, dict)]
