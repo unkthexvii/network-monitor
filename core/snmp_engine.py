@@ -64,157 +64,157 @@ async def fetch_snmp_data(device_ip, snmp_version, community=None, v3_user=None,
             errorIndication, errorStatus, errorIndex, varBinds = await _result
             t_elapsed = time.monotonic() - t_start
 
-        if errorIndication:
-            logger.error(f"SNMP FAIL {device_ip} ({t_elapsed:.1f}s) {errorIndication}")
-            return None
-        elif errorStatus:
-            logger.error(f"SNMP FAIL {device_ip} ({t_elapsed:.1f}s) status={errorStatus.prettyPrint()}")
-            return None
-        else:
-            logger.info(f"SNMP OK {device_ip} ({t_elapsed:.1f}s)")
-            result = {}
-            for varBind in varBinds:
-                oid = varBind[0].prettyPrint()
-                val = varBind[1].prettyPrint()
-                if 'sysName' in oid:
-                    result['sys_name'] = val
-                elif 'sysContact' in oid:
-                    result['sys_contact'] = val
-                elif 'sysLocation' in oid:
-                    result['sys_location'] = val
-                elif 'sysDescr' in oid:
-                    result['sys_descr'] = val
-                elif 'sysUpTime' in oid:
-                    # Convert timeticks to string format roughly (days, hh:mm:ss)
-                    try:
-                        ticks = int(varBind[1])
-                        seconds = ticks / 100.0
-                        m, s = divmod(seconds, 60)
-                        h, m = divmod(m, 60)
-                        d, h = divmod(h, 24)
-                        result['sys_uptime'] = f"{int(d)}d {int(h):02d}:{int(m):02d}:{int(s):02d}"
-                    except Exception:
-                        result['sys_uptime'] = val
+            if errorIndication:
+                logger.error(f"SNMP FAIL {device_ip} ({t_elapsed:.1f}s) {errorIndication}")
+                return None
+            elif errorStatus:
+                logger.error(f"SNMP FAIL {device_ip} ({t_elapsed:.1f}s) status={errorStatus.prettyPrint()}")
+                return None
+            else:
+                logger.info(f"SNMP OK {device_ip} ({t_elapsed:.1f}s)")
+                result = {}
+                for varBind in varBinds:
+                    oid = varBind[0].prettyPrint()
+                    val = varBind[1].prettyPrint()
+                    if 'sysName' in oid:
+                        result['sys_name'] = val
+                    elif 'sysContact' in oid:
+                        result['sys_contact'] = val
+                    elif 'sysLocation' in oid:
+                        result['sys_location'] = val
+                    elif 'sysDescr' in oid:
+                        result['sys_descr'] = val
+                    elif 'sysUpTime' in oid:
+                        # Convert timeticks to string format roughly (days, hh:mm:ss)
+                        try:
+                            ticks = int(varBind[1])
+                            seconds = ticks / 100.0
+                            m, s = divmod(seconds, 60)
+                            h, m = divmod(m, 60)
+                            d, h = divmod(h, 24)
+                            result['sys_uptime'] = f"{int(d)}d {int(h):02d}:{int(m):02d}:{int(s):02d}"
+                        except Exception:
+                            result['sys_uptime'] = val
 
-            # ── Base OIDs for ALL SNMP devices ──
-            extra_oids = []
-            extra_oids.append(ObjectType(ObjectIdentity('1.3.6.1.2.1.2.1.0')))    # ifNumber
-            extra_oids.append(ObjectType(ObjectIdentity('1.3.6.1.2.1.47.1.1.1.1.11.1'))) # entPhysicalSerialNum
-            extra_oids.append(ObjectType(ObjectIdentity('1.3.6.1.2.1.47.1.1.1.1.13.1'))) # entPhysicalModelName
-            extra_oids.append(ObjectType(ObjectIdentity('1.3.6.1.2.1.47.1.1.1.1.7.1')))  # entPhysicalName
+                # ── Base OIDs for ALL SNMP devices ──
+                extra_oids = []
+                extra_oids.append(ObjectType(ObjectIdentity('1.3.6.1.2.1.2.1.0')))    # ifNumber
+                extra_oids.append(ObjectType(ObjectIdentity('1.3.6.1.2.1.47.1.1.1.1.11.1'))) # entPhysicalSerialNum
+                extra_oids.append(ObjectType(ObjectIdentity('1.3.6.1.2.1.47.1.1.1.1.13.1'))) # entPhysicalModelName
+                extra_oids.append(ObjectType(ObjectIdentity('1.3.6.1.2.1.47.1.1.1.1.7.1')))  # entPhysicalName
 
-            # ── Type-specific OIDs ──
-            device_type_clean = (device_type or "").lower()
-            is_switch = device_type_clean in ["switch", "router", "gateway", "firewall"]
-            is_wlc = device_type_clean in ["wireless controller (wlc)", "controller", "access point"] or (device_name and "WLC" in str(device_name).upper())
-            is_ups = device_type_clean == "ups"
-            is_printer = device_type_clean == "printer"
-            is_server = device_type_clean in ["server", "virtual machine", "hypervisor", "storage/nas", "database"]
+                # ── Type-specific OIDs ──
+                device_type_clean = (device_type or "").lower()
+                is_switch = device_type_clean in ["switch", "router", "gateway", "firewall"]
+                is_wlc = device_type_clean in ["wireless controller (wlc)", "controller", "access point"] or (device_name and "WLC" in str(device_name).upper())
+                is_ups = device_type_clean == "ups"
+                is_printer = device_type_clean == "printer"
+                is_server = device_type_clean in ["server", "virtual machine", "hypervisor", "storage/nas", "database"]
 
-            if is_switch:
-                # Cisco CPU/memory/temperature
-                extra_oids.append(ObjectType(ObjectIdentity('1.3.6.1.4.1.9.9.109.1.1.1.1.7.1'))) # cpmCPUTotal5minRev
-                extra_oids.append(ObjectType(ObjectIdentity('1.3.6.1.4.1.9.9.48.1.1.1.5.1')))    # ciscoMemoryPoolUsed
-                extra_oids.append(ObjectType(ObjectIdentity('1.3.6.1.4.1.9.9.48.1.1.1.6.1')))    # ciscoMemoryPoolFree
-                extra_oids.append(ObjectType(ObjectIdentity('1.3.6.1.4.1.9.9.13.1.3.1.3.1')))    # ciscoEnvMonTemperatureStatusValue
+                if is_switch:
+                    # Cisco CPU/memory/temperature
+                    extra_oids.append(ObjectType(ObjectIdentity('1.3.6.1.4.1.9.9.109.1.1.1.1.7.1'))) # cpmCPUTotal5minRev
+                    extra_oids.append(ObjectType(ObjectIdentity('1.3.6.1.4.1.9.9.48.1.1.1.5.1')))    # ciscoMemoryPoolUsed
+                    extra_oids.append(ObjectType(ObjectIdentity('1.3.6.1.4.1.9.9.48.1.1.1.6.1')))    # ciscoMemoryPoolFree
+                    extra_oids.append(ObjectType(ObjectIdentity('1.3.6.1.4.1.9.9.13.1.3.1.3.1')))    # ciscoEnvMonTemperatureStatusValue
 
-            if is_wlc:
-                # Client count (try 3 OIDs in order)
-                extra_oids.append(ObjectType(ObjectIdentity('1.3.6.1.4.1.14179.2.1.1.1.0')))    # bsnMobileStationCount
-                extra_oids.append(ObjectType(ObjectIdentity('1.3.6.1.4.1.14179.2.1.1.1.38')))   # bsnAPIfLoadNumberOfUsers
-                extra_oids.append(ObjectType(ObjectIdentity('1.3.6.1.4.1.9.9.618.1.8.4.0')))     # cLWlanTotMobileStation
-                # AP count
-                extra_oids.append(ObjectType(ObjectIdentity('1.3.6.1.4.1.14179.2.1.1.1.19')))   # bsnAPCount
+                if is_wlc:
+                    # Client count (try 3 OIDs in order)
+                    extra_oids.append(ObjectType(ObjectIdentity('1.3.6.1.4.1.14179.2.1.1.1.0')))    # bsnMobileStationCount
+                    extra_oids.append(ObjectType(ObjectIdentity('1.3.6.1.4.1.14179.2.1.1.1.38')))   # bsnAPIfLoadNumberOfUsers
+                    extra_oids.append(ObjectType(ObjectIdentity('1.3.6.1.4.1.9.9.618.1.8.4.0')))     # cLWlanTotMobileStation
+                    # AP count
+                    extra_oids.append(ObjectType(ObjectIdentity('1.3.6.1.4.1.14179.2.1.1.1.19')))   # bsnAPCount
 
-            if is_ups:
-                extra_oids.append(ObjectType(ObjectIdentity('1.3.6.1.2.1.33.1.2.1.0')))          # upsBatteryStatus
-                extra_oids.append(ObjectType(ObjectIdentity('1.3.6.1.2.1.33.1.2.4.0')))          # upsEstimatedChargeRemaining
+                if is_ups:
+                    extra_oids.append(ObjectType(ObjectIdentity('1.3.6.1.2.1.33.1.2.1.0')))          # upsBatteryStatus
+                    extra_oids.append(ObjectType(ObjectIdentity('1.3.6.1.2.1.33.1.2.4.0')))          # upsEstimatedChargeRemaining
 
-            if is_printer:
-                extra_oids.append(ObjectType(ObjectIdentity('1.3.6.1.2.1.43.11.1.1.9.1.1')))     # prtMarkerSuppliesLevel
-                extra_oids.append(ObjectType(ObjectIdentity('1.3.6.1.2.1.43.10.2.1.4.1.1')))     # prtMarkerLifeCount (pages printed)
-                extra_oids.append(ObjectType(ObjectIdentity('1.3.6.1.2.1.43.5.1.1.17.1')))       # prtGeneralPrinterName
+                if is_printer:
+                    extra_oids.append(ObjectType(ObjectIdentity('1.3.6.1.2.1.43.11.1.1.9.1.1')))     # prtMarkerSuppliesLevel
+                    extra_oids.append(ObjectType(ObjectIdentity('1.3.6.1.2.1.43.10.2.1.4.1.1')))     # prtMarkerLifeCount (pages printed)
+                    extra_oids.append(ObjectType(ObjectIdentity('1.3.6.1.2.1.43.5.1.1.17.1')))       # prtGeneralPrinterName
 
-            if is_server:
-                extra_oids.append(ObjectType(ObjectIdentity('1.3.6.1.2.1.25.3.3.1.2.1')))         # hrProcessorLoad
-                extra_oids.append(ObjectType(ObjectIdentity('1.3.6.1.2.1.25.2.3.1.5.1')))         # hrStorageSize (total)
-                extra_oids.append(ObjectType(ObjectIdentity('1.3.6.1.2.1.25.2.3.1.6.1')))         # hrStorageUsed (used)
+                if is_server:
+                    extra_oids.append(ObjectType(ObjectIdentity('1.3.6.1.2.1.25.3.3.1.2.1')))         # hrProcessorLoad
+                    extra_oids.append(ObjectType(ObjectIdentity('1.3.6.1.2.1.25.2.3.1.5.1')))         # hrStorageSize (total)
+                    extra_oids.append(ObjectType(ObjectIdentity('1.3.6.1.2.1.25.2.3.1.6.1')))         # hrStorageUsed (used)
                 
-            if extra_oids:
-                _res2 = await getCmd(
-                    engine,
-                    auth_data,
-                    UdpTransportTarget((device_ip, 161), timeout=2, retries=1),
-                    ContextData(),
-                    *extra_oids
-                )
-                e_Ind, e_Stat, e_Idx, e_Binds = await _res2
-                if not e_Ind and not e_Stat:
-                    custom_data = {}
-                    for varBind in e_Binds:
-                        oid = varBind[0].prettyPrint()
-                        val = varBind[1]
-                        cls = val.__class__.__name__
-                        if cls not in ('NoSuchObject', 'NoSuchInstance', 'EndOfMibView'):
-                            val_str = val.prettyPrint()
-                            # ── Base OIDs (use endswith for precise suffix matching) ──
-                            if oid.endswith('1.3.6.1.2.1.2.1.0'):  # ifNumber
-                                custom_data['Interfaces'] = val_str
-                            elif oid.endswith('1.3.6.1.2.1.47.1.1.1.1.11.1'):  # entPhysicalSerialNum
-                                result['serial_number'] = val_str
-                            elif oid.endswith('1.3.6.1.2.1.47.1.1.1.1.13.1'):  # entPhysicalModelName
-                                custom_data['Model Name'] = val_str
-                            elif oid.endswith('1.3.6.1.2.1.47.1.1.1.1.7.1'):   # entPhysicalName
-                                custom_data['Chassis Name'] = val_str
-                            # ── WLC client count (first match wins, skip others) ──
-                            elif oid.endswith('1.3.6.1.4.1.14179.2.1.1.1.0'):
-                                try: result['client_count'] = int(val_str)
-                                except (ValueError, TypeError) as e: logger.debug(f"SNMP parse client_count for {device_ip}: {e}")
-                            elif oid.endswith('1.3.6.1.4.1.14179.2.1.1.1.38') and 'client_count' not in result:
-                                try: result['client_count'] = int(val_str)
-                                except (ValueError, TypeError) as e: logger.debug(f"SNMP parse client_count for {device_ip}: {e}")
-                            elif oid.endswith('1.3.6.1.4.1.9.9.618.1.8.4.0') and 'client_count' not in result:
-                                try: result['client_count'] = int(val_str)
-                                except (ValueError, TypeError) as e: logger.debug(f"SNMP parse client_count for {device_ip}: {e}")
-                            # ── WLC AP count ──
-                            elif oid.endswith('1.3.6.1.4.1.14179.2.1.1.1.19'):
-                                try: result['ap_count'] = int(val_str)
-                                except (ValueError, TypeError) as e: logger.debug(f"SNMP parse ap_count for {device_ip}: {e}")
-                            # ── Switch/router (Cisco) ──
-                            elif oid.endswith('1.3.6.1.4.1.9.9.109.1.1.1.1.7.1'):
-                                custom_data['CPU 5min %'] = val_str
-                            elif oid.endswith('1.3.6.1.4.1.9.9.48.1.1.1.5.1'):
-                                custom_data['Mem Used'] = val_str
-                            elif oid.endswith('1.3.6.1.4.1.9.9.48.1.1.1.6.1'):
-                                custom_data['Mem Free'] = val_str
-                            elif oid.endswith('1.3.6.1.4.1.9.9.13.1.3.1.3.1'):
-                                custom_data['Temperature'] = val_str
-                            # ── UPS ──
-                            elif oid.endswith('1.3.6.1.2.1.33.1.2.1.0'):
-                                status_map = {'1': 'Unknown', '2': 'Normal', '3': 'Low', '4': 'Depleted'}
-                                custom_data['Battery Status'] = status_map.get(val_str, f"Code {val_str}")
-                            elif oid.endswith('1.3.6.1.2.1.33.1.2.4.0'):
-                                custom_data['Battery Level'] = f"{val_str}%"
-                            # ── Printer ──
-                            elif oid.endswith('1.3.6.1.2.1.43.11.1.1.9.1.1'):
-                                custom_data['Toner Level'] = f"{val_str}%"
-                            elif oid.endswith('1.3.6.1.2.1.43.10.2.1.4.1.1'):
-                                custom_data['Pages Printed'] = val_str
-                            elif oid.endswith('1.3.6.1.2.1.43.5.1.1.17.1'):
-                                custom_data['Printer Name'] = val_str
-                            # ── Server ──
-                            elif oid.endswith('1.3.6.1.2.1.25.3.3.1.2.1'):
-                                custom_data['CPU Load %'] = f"{val_str}%"
-                            elif oid.endswith('1.3.6.1.2.1.25.2.3.1.5.1'):
-                                custom_data['Storage Total'] = val_str
-                            elif oid.endswith('1.3.6.1.2.1.25.2.3.1.6.1'):
-                                custom_data['Storage Used'] = val_str
-                        else:
-                            logger.debug(f"SNMP OID skipped for {device_ip}: {oid} = {cls}")
-                    if custom_data:
-                        result['custom_data'] = json.dumps(custom_data)
+                if extra_oids:
+                    _res2 = await getCmd(
+                        engine,
+                        auth_data,
+                        UdpTransportTarget((device_ip, 161), timeout=2, retries=1),
+                        ContextData(),
+                        *extra_oids
+                    )
+                    e_Ind, e_Stat, e_Idx, e_Binds = await _res2
+                    if not e_Ind and not e_Stat:
+                        custom_data = {}
+                        for varBind in e_Binds:
+                            oid = varBind[0].prettyPrint()
+                            val = varBind[1]
+                            cls = val.__class__.__name__
+                            if cls not in ('NoSuchObject', 'NoSuchInstance', 'EndOfMibView'):
+                                val_str = val.prettyPrint()
+                                # ── Base OIDs (use endswith for precise suffix matching) ──
+                                if oid.endswith('1.3.6.1.2.1.2.1.0'):  # ifNumber
+                                    custom_data['Interfaces'] = val_str
+                                elif oid.endswith('1.3.6.1.2.1.47.1.1.1.1.11.1'):  # entPhysicalSerialNum
+                                    result['serial_number'] = val_str
+                                elif oid.endswith('1.3.6.1.2.1.47.1.1.1.1.13.1'):  # entPhysicalModelName
+                                    custom_data['Model Name'] = val_str
+                                elif oid.endswith('1.3.6.1.2.1.47.1.1.1.1.7.1'):   # entPhysicalName
+                                    custom_data['Chassis Name'] = val_str
+                                # ── WLC client count (first match wins, skip others) ──
+                                elif oid.endswith('1.3.6.1.4.1.14179.2.1.1.1.0'):
+                                    try: result['client_count'] = int(val_str)
+                                    except (ValueError, TypeError) as e: logger.debug(f"SNMP parse client_count for {device_ip}: {e}")
+                                elif oid.endswith('1.3.6.1.4.1.14179.2.1.1.1.38') and 'client_count' not in result:
+                                    try: result['client_count'] = int(val_str)
+                                    except (ValueError, TypeError) as e: logger.debug(f"SNMP parse client_count for {device_ip}: {e}")
+                                elif oid.endswith('1.3.6.1.4.1.9.9.618.1.8.4.0') and 'client_count' not in result:
+                                    try: result['client_count'] = int(val_str)
+                                    except (ValueError, TypeError) as e: logger.debug(f"SNMP parse client_count for {device_ip}: {e}")
+                                # ── WLC AP count ──
+                                elif oid.endswith('1.3.6.1.4.1.14179.2.1.1.1.19'):
+                                    try: result['ap_count'] = int(val_str)
+                                    except (ValueError, TypeError) as e: logger.debug(f"SNMP parse ap_count for {device_ip}: {e}")
+                                # ── Switch/router (Cisco) ──
+                                elif oid.endswith('1.3.6.1.4.1.9.9.109.1.1.1.1.7.1'):
+                                    custom_data['CPU 5min %'] = val_str
+                                elif oid.endswith('1.3.6.1.4.1.9.9.48.1.1.1.5.1'):
+                                    custom_data['Mem Used'] = val_str
+                                elif oid.endswith('1.3.6.1.4.1.9.9.48.1.1.1.6.1'):
+                                    custom_data['Mem Free'] = val_str
+                                elif oid.endswith('1.3.6.1.4.1.9.9.13.1.3.1.3.1'):
+                                    custom_data['Temperature'] = val_str
+                                # ── UPS ──
+                                elif oid.endswith('1.3.6.1.2.1.33.1.2.1.0'):
+                                    status_map = {'1': 'Unknown', '2': 'Normal', '3': 'Low', '4': 'Depleted'}
+                                    custom_data['Battery Status'] = status_map.get(val_str, f"Code {val_str}")
+                                elif oid.endswith('1.3.6.1.2.1.33.1.2.4.0'):
+                                    custom_data['Battery Level'] = f"{val_str}%"
+                                # ── Printer ──
+                                elif oid.endswith('1.3.6.1.2.1.43.11.1.1.9.1.1'):
+                                    custom_data['Toner Level'] = f"{val_str}%"
+                                elif oid.endswith('1.3.6.1.2.1.43.10.2.1.4.1.1'):
+                                    custom_data['Pages Printed'] = val_str
+                                elif oid.endswith('1.3.6.1.2.1.43.5.1.1.17.1'):
+                                    custom_data['Printer Name'] = val_str
+                                # ── Server ──
+                                elif oid.endswith('1.3.6.1.2.1.25.3.3.1.2.1'):
+                                    custom_data['CPU Load %'] = f"{val_str}%"
+                                elif oid.endswith('1.3.6.1.2.1.25.2.3.1.5.1'):
+                                    custom_data['Storage Total'] = val_str
+                                elif oid.endswith('1.3.6.1.2.1.25.2.3.1.6.1'):
+                                    custom_data['Storage Used'] = val_str
+                            else:
+                                logger.debug(f"SNMP OID skipped for {device_ip}: {oid} = {cls}")
+                        if custom_data:
+                            result['custom_data'] = json.dumps(custom_data)
 
-            return result
+                return result
         finally:
             if created_engine:
                 try:
