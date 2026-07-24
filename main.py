@@ -231,6 +231,7 @@ async def auth_guard(request, call_next):
         "/api/readonly",
         "/api/logo",
         "/favicon.ico",
+        "/api/devices",
         "/api/devices/names",
         "/api/devices/paginated",
         "/api/devices/subnets",
