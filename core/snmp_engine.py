@@ -235,6 +235,9 @@ async def poll_all_devices():
             devices = result.scalars().all()
             logger.info(f"SNMP POLL START: {len(devices)} device(s), first: {devices[0].ip_address if devices else 'none'}")
 
+            if not devices:
+                return
+
             sem = asyncio.Semaphore(50)
             snmp_engine = SnmpEngine()
 
