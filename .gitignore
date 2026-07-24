@@ -25,6 +25,7 @@ archives/
 # Logs and data
 logs/
 crash.log
+admin_password.txt
 
 # IDE
 .vscode/

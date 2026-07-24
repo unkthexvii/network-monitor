@@ -126,7 +126,24 @@ async def lifespan(app: FastAPI):
             session.add(Setting(key="admin_password_salt", value=salt))
             session.add(Setting(key="admin_password_hash", value=pw_hash))
             await session.commit()
-            logger.info("Default admin password has been set. Change it via /api/auth/change-password. If the password is lost, delete the admin_password_hash and admin_password_salt rows from the settings table to reset.")
+
+            # Show password in console and write to file for the user
+            pw_file = os.path.join(APP_DIR, "admin_password.txt")
+            try:
+                with open(pw_file, "w") as f:
+                    f.write(DEFAULT_ADMIN_PASSWORD)
+            except Exception:
+                pass
+
+            print("\n" + "=" * 60)
+            print("  FIRST RUN — ADMIN PASSWORD")
+            print("=" * 60)
+            print(f"  Password: {DEFAULT_ADMIN_PASSWORD}")
+            print(f"  Saved to: {pw_file}")
+            print()
+            print("  Login at http://localhost:8000 with this password.")
+            print("  Change it immediately via Settings > Change Password.")
+            print("=" * 60 + "\n")
     
     yield
     
