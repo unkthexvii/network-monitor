@@ -4,8 +4,6 @@ import socket
 import shutil
 import traceback
 import asyncio
-if sys.platform == 'win32':
-    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
 if getattr(sys, 'frozen', False):
     APP_DIR = os.path.dirname(os.path.abspath(sys.executable))
