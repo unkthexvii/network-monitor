@@ -89,7 +89,6 @@ from database.session import init_db, dispose_engine
 from core.scheduler import start_scheduler, shutdown_scheduler
 from core.alert_engine import register_notify_callback
 from core.device_cache import device_cache
-import core.snmp_engine  # Ensure PyInstaller includes this module
 
 # Import routers
 from api.devices import router as devices_router
