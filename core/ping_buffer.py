@@ -34,7 +34,7 @@ class PingBuffer:
         snapshot = buffer.flush()   # returns and clears all data
     """
 
-    MAX_SAMPLES_PER_DEVICE = 1000  # ~16 min at 1s intervals; prevents unbounded growth if aggregator stalls
+    MAX_SAMPLES_PER_DEVICE = 100  # ~1.5 min at 1s intervals; enough for minute aggregation without bloating memory
 
     def __init__(self):
         self._data: Dict[int, List[PingSample]] = defaultdict(list)

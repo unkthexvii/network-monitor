@@ -368,6 +368,20 @@ async def purge_logs():
         logger.error(f"Log purge failed: {e}", exc_info=True)
 
 
+async def memory_cleanup():
+    """Periodic memory cleanup — force GC and clear accumulated state."""
+    import gc
+    import api.stream as stream_module
+
+    # Clear stale SSE clients
+    await stream_module._cleanup_stale_clients()
+
+    # Force garbage collection
+    collected = gc.collect()
+
+    logger.info(f"Memory cleanup: GC collected {collected} objects")
+
+
 def start_scheduler():
     from core.snmp_engine import poll_all_devices
     
@@ -399,8 +413,11 @@ def start_scheduler():
     # Session cleanup every 6 hours
     scheduler.add_job(cleanup_sessions, 'interval', hours=6, id='session_cleanup')
 
+    # Memory cleanup every 5 minutes — force GC and clear accumulated state
+    scheduler.add_job(memory_cleanup, 'interval', minutes=5, id='memory_cleanup')
+
     scheduler.start()
-    logger.info("Scheduler started: ping_poller (1s), minute_aggregator (1m), cache_refresh (30s), wal_checkpoint (5m), snmp_poller (5m), db_vacuum (1w), log_purge (1h)")
+    logger.info("Scheduler started: ping_poller (1s), minute_aggregator (1m), cache_refresh (30s), wal_checkpoint (5m), snmp_poller (5m), memory_cleanup (5m), db_vacuum (1w), log_purge (1h)")
 
 def shutdown_scheduler():
     scheduler.shutdown()

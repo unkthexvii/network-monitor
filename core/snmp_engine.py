@@ -46,21 +46,23 @@ async def fetch_snmp_data(device_ip, snmp_version, community=None, v3_user=None,
         logger.info(f"SNMP TRY {device_ip} v={snmp_version} comm={comm_masked} name={device_name or '-'}")
 
         t_start = time.monotonic()
+        created_engine = engine is None
         if engine is None:
             engine = SnmpEngine()
-        _result = await getCmd(
-            engine,
-            auth_data,
-            UdpTransportTarget((device_ip, 161), timeout=2, retries=1),
-            ContextData(),
-            ObjectType(ObjectIdentity('SNMPv2-MIB', 'sysName', 0)),
-            ObjectType(ObjectIdentity('SNMPv2-MIB', 'sysDescr', 0)),
-            ObjectType(ObjectIdentity('SNMPv2-MIB', 'sysUpTime', 0)),
-            ObjectType(ObjectIdentity('SNMPv2-MIB', 'sysContact', 0)),
-            ObjectType(ObjectIdentity('SNMPv2-MIB', 'sysLocation', 0))
-        )
-        errorIndication, errorStatus, errorIndex, varBinds = await _result
-        t_elapsed = time.monotonic() - t_start
+        try:
+            _result = await getCmd(
+                engine,
+                auth_data,
+                UdpTransportTarget((device_ip, 161), timeout=2, retries=1),
+                ContextData(),
+                ObjectType(ObjectIdentity('SNMPv2-MIB', 'sysName', 0)),
+                ObjectType(ObjectIdentity('SNMPv2-MIB', 'sysDescr', 0)),
+                ObjectType(ObjectIdentity('SNMPv2-MIB', 'sysUpTime', 0)),
+                ObjectType(ObjectIdentity('SNMPv2-MIB', 'sysContact', 0)),
+                ObjectType(ObjectIdentity('SNMPv2-MIB', 'sysLocation', 0))
+            )
+            errorIndication, errorStatus, errorIndex, varBinds = await _result
+            t_elapsed = time.monotonic() - t_start
 
         if errorIndication:
             logger.error(f"SNMP FAIL {device_ip} ({t_elapsed:.1f}s) {errorIndication}")
@@ -213,6 +215,12 @@ async def fetch_snmp_data(device_ip, snmp_version, community=None, v3_user=None,
                         result['custom_data'] = json.dumps(custom_data)
 
             return result
+        finally:
+            if created_engine:
+                try:
+                    engine.close()
+                except Exception:
+                    pass
     except Exception as e:
         logger.error(f"SNMP Exception for {device_ip}: {e}", exc_info=True)
         return None
@@ -321,6 +329,12 @@ async def poll_all_devices():
                         results.append(None)
                 else:
                     results.append(None)
+
+            # Release SnmpEngine resources
+            try:
+                snmp_engine.close()
+            except Exception:
+                pass
 
             # Fetch all DeviceStatus records in chunked queries to avoid SQLite's 999-variable limit
             device_ids = [d.id for d, r in zip(devices, results) if isinstance(r, dict)]
