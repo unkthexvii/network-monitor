@@ -34,10 +34,10 @@ graph TD
     end
 
     subgraph Routes [HTTP Routes]
-        Root[/ (index.html)]
-        Wall[/wall (NOC display)]
-        Logo[/api/logo]
-        Favicon[/favicon.ico]
+        Root[ / (index.html) ]
+        Wall[ /wall (NOC display) ]
+        Logo[ /api/logo ]
+        Favicon[ /favicon.ico ]
     end
 
     UI <-->|HTTP / REST API| API
