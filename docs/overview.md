@@ -34,8 +34,8 @@ graph TD
     end
 
     subgraph Routes [HTTP Routes]
-        Root[ "/ (index.html)" ]
-        Wall[ "/wall (NOC display)" ]
+        Root[ / ]
+        Wall[ /wall ]
         Logo[ /api/logo ]
         Favicon[ /favicon.ico ]
     end
