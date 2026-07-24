@@ -5,6 +5,9 @@ datas = [('static', 'static'), ('logo', 'logo')]
 datas += collect_data_files('pysnmp')
 datas += collect_data_files('pysmi')
 
+from PyInstaller.utils.hooks import collect_submodules
+datas += collect_submodules('core')
+
 
 block_cipher = None
 
