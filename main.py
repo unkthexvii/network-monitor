@@ -161,11 +161,11 @@ app.add_middleware(CustomGZipMiddleware, minimum_size=1000)
 
 _CSP_HEADER = (
     "default-src 'self'; "
-    "script-src 'self' https://cdn.jsdelivr.net https://unpkg.com; "
-    "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://fonts.googleapis.com; "
-    "font-src https://fonts.gstatic.com; "
+    "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://unpkg.com; "
+    "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://unpkg.com https://fonts.googleapis.com; "
+    "font-src 'self' https://cdn.jsdelivr.net https://fonts.gstatic.com; "
     "img-src 'self' data:; "
-    "connect-src 'self' ws:; "
+    "connect-src 'self' ws: https://cdn.jsdelivr.net https://unpkg.com; "
     "frame-src 'none'; "
     "object-src 'none'; "
     "base-uri 'self'"
@@ -209,11 +209,24 @@ async def auth_guard(request, call_next):
     if request.url.path == "/api/auth/check":
         return await call_next(request)
 
+    # Public read-only endpoints — accessible without auth
+    _PUBLIC_GET_PATHS = {
+        "/api/readonly",
+        "/api/logo",
+        "/favicon.ico",
+        "/api/devices/names",
+        "/api/dashboard/stats",
+        "/api/dashboard/events",
+        "/api/devices/subnets",
+    }
+    if request.method in ("GET", "HEAD", "OPTIONS") and request.url.path in _PUBLIC_GET_PATHS:
+        return await call_next(request)
+
     # Dynamic readonly check — reads from both env var and DB
     if await get_readonly_from_db():
         return JSONResponse(status_code=403, content={"detail": "Read-only mode active"})
 
-    # All API endpoints require authentication (including GET/HEAD/OPTIONS)
+    # All other API endpoints require authentication
     if request.url.path.startswith("/api/"):
         token = get_token_from_request(request)
         if not token or not session_store.validate(token):
