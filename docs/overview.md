@@ -23,7 +23,7 @@ graph TD
         Cache["In-Memory Device Cache, Ping Buffer & TTLCache — bounded"]
         Workers[Background Threads - ICMP Engine & SNMP Engine]
         Alerts[Alert Engine - Callback Registry & State Machine]
-        Sched[Scheduler - Stats Roll-up, DB Cleanup & VACUUM]
+        Sched[Scheduler - Ping dispatch, SNMP poll, Stats Roll-up, DB Cleanup & VACUUM]
         ReportGen[PDF Report Generator - fpdf2]
         Archive[Archive Queries - Cross-DB federation]
         Pagin[Pagination - Server-side pagination]
@@ -48,7 +48,7 @@ graph TD
     Workers -->|Cache Sync| Cache
     Cache -->|Metrics Evaluation| Alerts
     Alerts -->|SSE Events| SSE
-    Sched <-->|Hour/Day Aggregations| DB
+    Sched <-->|Minute Aggregations| DB
     Sched <-->|Archive Operations| Archive
     Archive <-->|Cross-DB Queries| DB
 ```
@@ -77,7 +77,7 @@ network-monitor/
 │   ├── cache.py               # Shared Memory Cache base
 │   ├── config.py              # System constants (Thresholds, intervals, paths)
 │   ├── device_cache.py        # Active devices cached in-memory
-│   ├── icmp_engine.py         # Subprocess ICMP ping runner
+│   ├── icmp_engine.py         # icmplib raw socket ICMP ping runner
 │   ├── pagination.py          # Paginated query helper
 │   ├── ping_buffer.py         # Thread-safe buffer for ping history
 │   ├── scheduler.py           # Stats aggregation scheduler & cleanup jobs
@@ -95,8 +95,12 @@ network-monitor/
 │
 ├── static/                    # Frontend Static Files
 │   ├── index.html             # UI Structure (Bootstrap, Icons, Custom Cards)
-│   ├── app.js                 # Frontend Controller (AJAX, State, SSE, Chart.js, Topology map)
-│   ├── style.css              # Custom styling sheet (Dark mode theme, Indicator animations)
+│   ├── app.js                 # Frontend Controller (AJAX, State, SSE, Topology map)
+│   ├── style.css              # Custom styling sheet (Dark mode theme)
+│   ├── sse.js                 # Shared SSE connection manager (reconnect, backoff, factory)
+│   ├── wall.html              # NOC wall display page
+│   ├── wall.js                # Wall display logic
+│   ├── wall.css               # Wall display styles
 │   ├── online.mp3             # Playable sound when device recovers
 │   └── offline.mp3            # Playable sound when device crashes
 │
@@ -124,5 +128,6 @@ When `main.py` is executed:
 2. **Database Initialization & Migrations:** `init_db()` is invoked. It generates the database tables if they do not exist. It then uses `PRAGMA table_info` to inspect the table schema and dynamically adds any missing columns (e.g., `client_count`, `serial_number`, `remark`) without corrupting existing data.
 3. **Cache Hydration:** Active, enabled devices are loaded from the database into the in-memory `device_cache`.
 4. **SSE Callbacks Registration:** The event broadcast queues are bound to the SSE dispatch registry.
-5. **Scheduler & Worker Startup:** The aggregation scheduler starts running. Simultaneously, background worker threads are spawned to start polling network hardware.
-6. **Web Server Initialization:** FastAPI starts serving the web interface via Uvicorn on port `8000` (or `MONITOR_PORT`).
+5. **Admin Password Seeding:** If no admin password hash exists in the settings table, a random password is generated, displayed on console, and saved to `admin_password.txt` in the app directory.
+6. **Scheduler & Worker Startup:** The scheduler starts — dispatches pings every 1s, aggregates minute stats, polls SNMP every 5m, refreshes device cache every 30s, checkpoints WAL every 5m, runs memory GC every 5m, purges old data daily, cleans expired sessions every 6h, and vacuums weekly. Background worker threads also start polling network hardware.
+7. **Web Server Initialization:** FastAPI starts serving the web interface via Uvicorn on port `8000` (or `MONITOR_PORT`).

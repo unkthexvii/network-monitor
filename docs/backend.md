@@ -25,7 +25,7 @@ The database is built on **SQLite** using **SQLAlchemy Asyncio** with the `aiosq
 To prevent database locking and increase write throughput for rapid polling, the connection engine enforces the following PRAGMAs:
 - **Write-Ahead Logging (WAL):** Enables concurrent reads and writes.
 - **Synchronous Mode = NORMAL:** Reduces disk synchronization cycles.
-- **Memory Temp Storage & Cache Tuning:** Caches temporary indexes in RAM and maps up to 256MB of memory for fast reads.
+- **Memory Temp Storage & Cache Tuning:** Caches temporary indexes in RAM (`PRAGMA temp_store=MEMORY`) and maps up to 256MB of memory for fast reads (`PRAGMA mmap_size=268435456`). WAL file growth is capped at 64 MB (`PRAGMA journal_size_limit=67108864`).
 - **Foreign Keys ON:** Ensures referential integrity.
 - **Busy Timeout:** 5-second wait before failing on locked DB.
 
@@ -33,9 +33,9 @@ To prevent database locking and increase write throughput for rapid polling, the
 The system checks schema integrity during database initialization. It uses `PRAGMA table_info` to inspect existing columns and dynamically applies `ALTER TABLE ADD COLUMN` statements. This prevents schema drift when upgrading without corrupting user configuration. Covers `created_at`, `updated_at`, `recovery_count`, and all SNMP fields.
 
 ### Data Schema (`database/models.py`)
-- **`Device`:** Hardware metadata (IP, name, device type, enabled status, remark, SNMP authentication, check interval, latency/packet-loss thresholds, timestamps).
-- **`DeviceStatus`:** Real-time state. Includes latency, packet loss, fail/recovery counts, system information (sys_name, sys_descr, sys_uptime), and asset tracking (`client_count`, `ap_count`, `serial_number`).
-- **`Alert`:** Alarm audit log with timestamps and status transitions (`ONLINE`/`OFFLINE`).
+- **`Device`:** Hardware metadata (IP, name, device type, enabled status, remark, site, location, rack, vendor, model, SNMP authentication, check interval, latency/packet-loss thresholds, timestamps).
+- **`DeviceStatus`:** Real-time state. Includes latency, packet loss, fail/recovery counts, system information (sys_name, sys_descr, sys_uptime, sys_contact, sys_location), and asset tracking (`client_count`, `ap_count`, `serial_number`, `snmp_custom_data`).
+- **`Alert`:** Alarm audit log with timestamps and status transitions (`ONLINE`, `OFFLINE`, `INITIALIZED`, `PAUSED`, `RESUMED`).
 - **`MinuteStat`:** Per-device minute-level aggregates (avg/min/max latency, packet loss, uptime %).
 - **`TopologyTab` / `TopologyNode` / `TopologyLink`:** Interactive topology mapping.
 - **`Setting`:** Key-value configuration store.
@@ -71,7 +71,7 @@ The core engines orchestrate network telemetry, threshold checks, debouncing, an
 - Thread-safe in-memory buffer for 1-second ping samples.
 - Replaces per-second DB writes — reduces DB writes by ~98%.
 - Flushed every 60 seconds by the aggregator into MinuteStat rows.
-- Capped at 1000 samples per device (prevents unbounded growth).
+- Capped at 100 samples per device (prevents unbounded growth, ~1.5 min at 1s intervals).
 
 ### SNMP Asset Collector (`core/snmp_engine.py`)
 - A PySNMP-based client that queries hardware telemetry asynchronously.
@@ -95,6 +95,8 @@ The core engines orchestrate network telemetry, threshold checks, debouncing, an
 - **Daily Cleanup:** Archives old data (raw pings >7d, stats >7d, alerts >90d) into monthly databases. Archive queries use parameterized SQL and validated identifiers.
 - **Weekly VACUUM:** Reclaims disk space after cleanup deletes.
 - **Hourly Log Purge:** Removes rotated log backups older than 24 hours.
+- **Session Cleanup:** Every 6 hours, removes expired auth sessions from the in-memory store.
+- **Memory Cleanup:** Every 5 minutes, forces garbage collection (`gc.collect()`) and cleans stale SSE clients.
 
 ### Additional Modules
 - **`core/config.py`:** All tunable constants with environment variable overrides.
@@ -108,13 +110,13 @@ The core engines orchestrate network telemetry, threshold checks, debouncing, an
 
 FastAPI handles REST requests and streams Server-Sent Events.
 
-- **`devices.py`**: CRUD devices (`GET`, `POST`, `PUT`, `DELETE` `/api/devices`). LAN discovery (`/api/devices/discover`), CSV export, paginated listing with status/search/subnet filters. Input validation via Pydantic validators (IP address, check interval, CIDR subnet). SNMP test endpoint (`/api/test/snmp/{device_id}`) with masked community string.
-- **`auth.py`**: Authentication endpoints (`POST /api/auth/login`, `POST /api/auth/logout`, `GET /api/auth/check`, `POST /api/auth/change-password`). Password hashing via salted SHA-256, httpOnly cookie session store with configurable TTL. Default password set via `MONITOR_DEFAULT_PASSWORD` env var on first run.
-- **`dashboard.py`**: Network health statistics, recent events feed (paginated, 24h window), offline device listing.
+- **`devices.py`**: CRUD devices (`GET`, `POST`, `PUT`, `DELETE` `/api/devices`). LAN discovery (`/api/devices/discover`), CSV export, paginated listing with status/search/subnet filters. Bulk import (`POST /api/devices/bulk`), lightweight device names for comboboxes (`GET /api/devices/names`), per-device time-window stats (`GET /api/devices/{device_id}/stats`), auto-detected subnets (`GET /api/devices/subnets`). Input validation via Pydantic validators (IP address, check interval, CIDR subnet). SNMP test endpoint (`/api/test/snmp/{device_id}`) with masked community string.
+- **`auth.py`**: Authentication endpoints (`POST /api/auth/login`, `POST /api/auth/logout`, `GET /api/auth/check`, `POST /api/auth/change-password`). Password hashing via PBKDF2-HMAC-SHA256 with 200,000 iterations and random salt, httpOnly cookie session store with configurable TTL. Rate-limited to 5 attempts per IP per minute via `FailedLoginRateLimiter`. Default password set via `MONITOR_DEFAULT_PASSWORD` env var on first run.
+- **`dashboard.py`**: Network health statistics (`online`/`offline`/`paused`/`unknown` counts), recent events feed (paginated, 24h window).
 - **`alerts.py`**: Fetches paginated alert history with time/status/device filtering. Supports grouped-by-device or per-device views.
 - **`topology.py`**: CRUD for topology tabs, nodes (positioned devices), and links (connections between devices). Icon type mapping by device category.
 - **`reports.py`**: Generate and download performance PDF reports. UI data endpoint for report previews.
-- **`stream.py`**: SSE stream for real-time updates. Uses `dict[id, {queue, last_activity}]` for client tracking with 120s timeout and stale client cleanup.
+- **`stream.py`**: SSE stream for real-time updates. Uses `dict[id, {queue, last_activity}]` for client tracking with queue `wait_for` timeout (120s heartbeat), stale client cleanup at 300s (5 min), and SSE-level keepalive pings every 30s.
 
 ---
 
