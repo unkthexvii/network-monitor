@@ -23,7 +23,7 @@ if %ERRORLEVEL% neq 0 (
         echo     Install it manually:
         echo       powershell -c "irm https://astral.sh/uv/install.ps1 ^| iex"
         echo.
-        echo     Or install Python 3.8.10 from python.org, then re-run this script.
+        echo     Or install Python 3.10+ from python.org, then re-run this script.
         echo.
         pause
         exit /b 1
@@ -35,7 +35,7 @@ echo [OK] Using uv: !UV_EXE!
 :: Step 1: Create / verify the virtual environment
 :: -------------------------------------------------
 echo.
-echo Step 1: Creating Python 3.8.10 virtual environment...
+echo Step 1: Creating Python 3.10+ virtual environment...
 
 :: Check if venv already exists and has pyinstaller
 if exist "venv_win7\Scripts\pyinstaller.exe" (
@@ -45,10 +45,10 @@ if exist "venv_win7\Scripts\pyinstaller.exe" (
         echo [INFO] venv_win7 exists but incomplete. Recreating...
         rmdir /s /q venv_win7
     )
-    echo Creating venv with Python 3.8.10...
-    "!UV_EXE!" venv --python 3.8.10 --seed --force venv_win7
+    echo Creating venv with Python 3.10 or higher...
+    "!UV_EXE!" venv --python 3.10 --seed --force venv_win7
     if %ERRORLEVEL% neq 0 (
-        echo [ERROR] Failed to create venv. Make sure Python 3.8.10 is available via uv.
+        echo [ERROR] Failed to create venv. Make sure Python 3.10+ is available via uv.
         pause
         exit /b 1
     )

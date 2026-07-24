@@ -2,7 +2,7 @@
 
 [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 ![Platform](https://img.shields.io/badge/platform-Windows%207%2B-blue)
-![Python](https://img.shields.io/badge/python-3.8%2B-blue)
+![Python](https://img.shields.io/badge/python-3.10%2B-blue)
 [![Release](https://img.shields.io/github/v/release/unkthexvii/network-monitor)](https://github.com/unkthexvii/network-monitor/releases)
 
 Real-time network surveillance tool for Windows. Monitors endpoints via ICMP ping and SNMP telemetry — with a live web dashboard and **full-screen NOC wall display**.
@@ -38,7 +38,7 @@ Real-time network surveillance tool for Windows. Monitors endpoints via ICMP pin
 ### Option 1: Run from Source (Development)
 
 ```batch
-:: Requires Python 3.8+ and Administrator privileges
+:: Requires Python 3.10+ and Administrator privileges
 python main.py
 ```
 
@@ -110,7 +110,7 @@ All settings are in `core/config.py`. Override via environment variables:
 | `MONITOR_STAT_RETENTION_DAYS` | `7` | Minute stats retention (days) |
 | `MONITOR_EVENT_RETENTION_DAYS` | `90` | Alert history retention (days) |
 | `MONITOR_DATABASE_URL` | `sqlite+aiosqlite:///monitor.db` | Database path |
-| `CACHE_TTL_SECONDS` | `60` | Dashboard/report cache TTL (seconds) |
+| `MONITOR_CACHE_TTL` | `60` | Dashboard/report cache TTL (seconds) |
 
 ---
 

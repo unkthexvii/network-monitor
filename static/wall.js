@@ -1,3 +1,14 @@
+// XSS prevention: escape HTML special characters in user-controlled data
+function escapeHtml(str) {
+    if (str === null || str === undefined) return '';
+    return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
 document.addEventListener("DOMContentLoaded", () => {
   const outageList = document.getElementById("outageList");
   const hero = document.getElementById("hero");
@@ -24,8 +35,10 @@ document.addEventListener("DOMContentLoaded", () => {
 
   function fmtMsg(msg) {
     if (!msg) return "";
+    // XSS: escape user message before any HTML processing
+    msg = escapeHtml(String(msg));
     // Remove redundant "Device <name> (<ip>)" text from standard messages
-    msg = String(msg).replace(/^Device\s+.*?\s+\(.*?\)\s+went\s+(.*?)\.?$/i, '$1');
+    msg = msg.replace(/^Device\s+.*?\s+\(.*?\)\s+went\s+(.*?)\.?$/i, '$1');
     msg = msg.replace(/^Monitoring for device\s+.*?\s+\(.*?\)\s+was\s+(.*?)\.?$/i, 'Monitoring was $1');
     return msg.replace(/\((Downtime|Paused for): (.*?)\)/g, '<span style="opacity:0.6">(</span><span style="opacity:0.6">$1: </span><span style="color:var(--paused); font-weight:bold">$2</span><span style="opacity:0.6">)</span>');
   }
@@ -33,8 +46,13 @@ document.addEventListener("DOMContentLoaded", () => {
   function renderClock() {
     clock.textContent = new Date().toLocaleTimeString('en-GB', { hour12: true }).toUpperCase();
   }
-  window.setInterval(renderClock, 1000);
+  const clockInterval = window.setInterval(renderClock, 1000);
   renderClock();
+
+  // Clean up interval on page unload
+  window.addEventListener('beforeunload', () => {
+    clearInterval(clockInterval);
+  });
 
   function updateStats() {
     fetch('/api/dashboard/stats', {credentials: 'include'})
@@ -126,14 +144,14 @@ document.addEventListener("DOMContentLoaded", () => {
       const row = document.createElement("div");
       row.className = "outage-row";
       row.dataset.id = dev.id;
-      const remarkHtml = dev.remark ? ` title="${dev.remark.replace(/"/g, '&quot;')}"` : '';
+      const remarkHtml = dev.remark ? ` title="${escapeHtml(dev.remark)}"` : '';
       const remarkStyle = dev.remark ? 'border-bottom: 1px dotted #888; cursor: help;' : '';
 
       row.innerHTML = `
         <div class="indicator offline"></div>
-        <div class="name"><span${remarkHtml} style="${remarkStyle}">${dev.name || "UNKNOWN"}</span></div>
-        <div class="ip">${dev.ip_address || "—"}</div>
-        <div class="type">${dev.device_type || ""}</div>
+        <div class="name"><span${remarkHtml} style="${remarkStyle}">${escapeHtml(dev.name || "UNKNOWN")}</span></div>
+        <div class="ip">${escapeHtml(dev.ip_address || "—")}</div>
+        <div class="type">${escapeHtml(dev.device_type || "")}</div>
         <div class="down">${fmtExactTime(dev.offline_since)}</div>
       `;
       outageList.appendChild(row);
@@ -162,15 +180,15 @@ document.addEventListener("DOMContentLoaded", () => {
     eventList.forEach(e => {
       const el = document.createElement("div");
       const st = String(e.status).toLowerCase();
-      const remarkHtml = e.remark ? ` title="${e.remark.replace(/"/g, '&quot;')}"` : '';
+      const remarkHtml = e.remark ? ` title="${escapeHtml(e.remark)}"` : '';
       const remarkStyle = e.remark ? 'border-bottom: 1px dotted #888; cursor: help;' : '';
 
       el.className = `event ${st}`;
       el.innerHTML = `
         <div class="icon"></div>
         <div class="event-body">
-          <div class="device"><span${remarkHtml} style="${remarkStyle}">${e.device_name || "UNKNOWN"}</span></div>
-          <div style="font-size: 0.85rem; color: rgba(255,255,255,0.5); font-family: monospace; margin-bottom: 4px;">${e.ip_address || ""}</div>
+          <div class="device"><span${remarkHtml} style="${remarkStyle}">${escapeHtml(e.device_name || "UNKNOWN")}</span></div>
+          <div style="font-size: 0.85rem; color: rgba(255,255,255,0.5); font-family: monospace; margin-bottom: 4px;">${escapeHtml(e.ip_address || "")}</div>
           <div class="msg">${fmtMsg(e.message || e.status)}</div>
         </div>
         <div class="time">${fmtExactTime(e.timestamp)}</div>

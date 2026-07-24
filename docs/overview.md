@@ -17,26 +17,40 @@ graph TD
     end
 
     subgraph Backend [FastAPI Backend Server]
-        API[FastAPI Routers - Devices, Alerts, Dashboard, Reports, Stream]
+        API[FastAPI Routers - Devices, Alerts, Dashboard, Reports, Stream, Auth, Topology]
+        Auth[Auth Router - Login/Logout/Change-Password]
+        SSE[SSE Stream - Real-time updates]
         Cache["In-Memory Device Cache, Ping Buffer & TTLCache — bounded"]
         Workers[Background Threads - ICMP Engine & SNMP Engine]
-        Alerts[Alert Engine - Debouncer / Evaluator]
+        Alerts[Alert Engine - Callback Registry & State Machine]
         Sched[Scheduler - Stats Roll-up, DB Cleanup & VACUUM]
         ReportGen[PDF Report Generator - fpdf2]
+        Archive[Archive Queries - Cross-DB federation]
+        Pagin[Pagination - Server-side pagination]
     end
 
     subgraph Storage [SQLite Database]
         DB[(monitor.db)]
     end
 
+    subgraph Routes [HTTP Routes]
+        Root[/ (index.html)]
+        Wall[/wall (NOC display)]
+        Logo[/api/logo]
+        Favicon[/favicon.ico]
+    end
+
     UI <-->|HTTP / REST API| API
-    JS <---|Server-Sent Events / SSE Stream| API
+    JS <---|Server-Sent Events / SSE Stream| SSE
     API <-->|SQLAlchemy Async| DB
+    API -->|Static Files| Routes
     Workers -->|DB Status Writes| DB
     Workers -->|Cache Sync| Cache
     Cache -->|Metrics Evaluation| Alerts
-    Alerts -->|SSE Events| API
+    Alerts -->|SSE Events| SSE
     Sched <-->|Hour/Day Aggregations| DB
+    Sched <-->|Archive Operations| Archive
+    Archive <-->|Cross-DB Queries| DB
 ```
 
 ---
@@ -47,8 +61,6 @@ graph TD
 network-monitor/
 │
 ├── main.py                    # Application Entrypoint (FastAPI, Lifespan, Win7 Privilege Check)
-├── migrate.py                 # Standalone/Legacy SQLite Migration Helper
-├── NetworkMonitor.spec        # PyInstaller Spec for Modern Windows builds
 ├── NetworkMonitor_Win7.spec   # PyInstaller Spec for Windows 7 builds
 ├── build.bat / build_win7.bat # Compile scripts (compiles Python code to standalone .exe)
 │
@@ -79,7 +91,7 @@ network-monitor/
 │   └── session.py             # DB connection pool, SQLite WAL optimization, Auto-Migrations
 │
 ├── reporting/                 # Reports Module
-│   └── pdf_generator.py       # ReportLab PDF building engine
+│   └── pdf_generator.py      # fpdf2 PDF building engine
 │
 ├── static/                    # Frontend Static Files
 │   ├── index.html             # UI Structure (Bootstrap, Icons, Custom Cards)

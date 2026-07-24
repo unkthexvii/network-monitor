@@ -79,7 +79,7 @@ The core engines orchestrate network telemetry, threshold checks, debouncing, an
 - **WLC (Wireless Controller) Metrics Query:** Queries `1.3.6.1.4.1.14179.2.1.1.1.0` (`bsnMobileStationCount`) for active wireless clients.
 - **Universal Serial Number Query:** Queries `1.3.6.1.2.1.47.1.1.1.1.11.1` (`entPhysicalSerialNum`) for chassis serial numbers.
 - **Custom OID Support:** Extra OIDs can be added per device type (stored in `snmp_custom_data`).
-- Polls all SNMP-enabled devices every 5 minutes via the scheduler. Queries are chunked to avoid the 999-variable SQLite limit.
+- Polls all SNMP-enabled devices every 5 minutes via the scheduler. Uses a semaphore (max 50 concurrent) for concurrency control. The 999-variable SQLite limit is handled separately in the workers/ping buffer layer, not in SNMP queries.
 
 ### Alert Engine (`core/alert_engine.py`)
 - **Now a lightweight callback registry.** The actual state machine and debouncing logic lives in `workers.py:_process_ping_chunk()`.
@@ -126,3 +126,19 @@ Compiles professional-grade network health summaries.
 - **Visual Formatting:** Implements dynamic headers, page numbers, clean table layouts, and color-coded cell highlights based on status.
 - **Company Branding:** Dynamically searches the `/logo` folder next to the executable. If a company logo is found (e.g. `.png` or `.jpg`), it embeds it into the PDF header automatically.
 - **Content:** Includes an executive summary, device inventory table (with serial numbers and WLC client counts), average latency trends, and a complete history of network alerts during the reporting window.
+
+---
+
+## 6. Additional Endpoints
+
+### Logo and Favicon
+- **`/api/logo`** (`GET`): Serves the first image file found in the `logo/` directory next to the executable. Supports PNG, JPG, JPEG, GIF, SVG, and WebP formats. Returns 404 if no logo is found.
+- **`/favicon.ico`** (`GET`): Serves the logo as a favicon. Returns 404 if no logo is found.
+
+### Read-Only Mode
+- **`/api/readonly`** (`GET`): Returns the current readonly status and whether the client is authenticated. No authentication required.
+- **`/api/admin/readonly`** (`POST`): Toggles readonly mode. Requires authentication. When enabled, all mutating API requests (POST/PUT/DELETE) return HTTP 403.
+- Readonly mode can be set via the `MONITOR_READONLY` environment variable or via the API.
+
+### Crash Handler
+- The application installs a global exception handler (`sys.excepthook`) that writes unhandled exception tracebacks to `crash.log` in the application directory. This file is useful for debugging startup crashes and unhandled exceptions.

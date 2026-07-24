@@ -17,7 +17,7 @@ from database.models import Device, DeviceStatus
 logger = logging.getLogger("SNMPEngine")
 
 
-async def fetch_snmp_data(device_ip, snmp_version, community=None, v3_user=None, v3_auth=None, v3_priv=None, device_type=None, device_name=None):
+async def fetch_snmp_data(device_ip, snmp_version, community=None, v3_user=None, v3_auth=None, v3_priv=None, device_type=None, device_name=None, engine=None):
     """
     Fetches sysName, sysDescr, and sysUpTime from the target device.
     Creates a fresh SnmpEngine per call to avoid concurrency issues with
@@ -46,7 +46,8 @@ async def fetch_snmp_data(device_ip, snmp_version, community=None, v3_user=None,
         logger.info(f"SNMP TRY {device_ip} v={snmp_version} comm={comm_masked} name={device_name or '-'}")
 
         t_start = time.monotonic()
-        engine = SnmpEngine()
+        if engine is None:
+            engine = SnmpEngine()
         _result = await getCmd(
             engine,
             auth_data,
@@ -235,6 +236,7 @@ async def poll_all_devices():
             logger.info(f"SNMP POLL START: {len(devices)} device(s), first: {devices[0].ip_address if devices else 'none'}")
 
             sem = asyncio.Semaphore(50)
+            snmp_engine = SnmpEngine()
 
             async def sem_fetch(*args, **kwargs):
                 async with sem:
@@ -251,7 +253,8 @@ async def poll_all_devices():
                         v3_auth=device.snmp_v3_auth,
                         v3_priv=device.snmp_v3_priv,
                         device_type=device.device_type,
-                        device_name=device.name
+                        device_name=device.name,
+                        engine=snmp_engine
                     )
                 )
 

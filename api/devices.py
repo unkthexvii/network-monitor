@@ -7,6 +7,7 @@ import asyncio
 import logging
 import ipaddress
 import json
+import time
 
 from database.session import get_db
 from database.models import Device, DeviceStatus, MinuteStat
@@ -17,8 +18,20 @@ from fastapi.responses import StreamingResponse
 import io
 import csv
 from core.pagination import paginate
+from core.utils import get_default_check_interval
+from core.device_cache import device_cache
+from api.stream import sse_publisher
 
 logger = logging.getLogger(__name__)
+
+
+def _safe_json_loads(value):
+    """Safely parse JSON string, returning None on failure."""
+    try:
+        return json.loads(value)
+    except (json.JSONDecodeError, TypeError, ValueError):
+        return None
+
 
 router = APIRouter()
 
@@ -49,7 +62,7 @@ def _device_to_dict(device: Device, status_rec: Optional[DeviceStatus]) -> dict:
         "client_count": status_rec.client_count if status_rec else None,
         "ap_count": status_rec.ap_count if status_rec else None,
         "serial_number": status_rec.serial_number if status_rec else None,
-        "snmp_custom_data": json.loads(status_rec.snmp_custom_data) if (status_rec and status_rec.snmp_custom_data) else None,
+        "snmp_custom_data": _safe_json_loads(status_rec.snmp_custom_data) if status_rec else None,
         "status": status_rec.status if status_rec else "UNKNOWN",
         "latency_ms": status_rec.latency_ms if status_rec else 0,
         "packet_loss": status_rec.packet_loss if status_rec else 0,
@@ -149,7 +162,6 @@ async def read_devices(session: AsyncSession = Depends(get_db)):
 async def read_device_names(session: AsyncSession = Depends(get_db)):
     """Lightweight endpoint returning only id, name, ip_address, device_type.
     ~90% smaller payload than /api/devices — used by search comboboxes."""
-    from sqlalchemy import select
     result = await session.execute(
         select(Device.id, Device.name, Device.ip_address, Device.device_type)
     )
@@ -254,27 +266,30 @@ async def add_device(device: DeviceCreate, session: AsyncSession = Depends(get_d
     if not device_data.get("name") or not device_data["name"].strip():
         device_data["name"] = device_data["ip_address"]
     if device_data.get("check_interval") is None:
-        from core.utils import get_default_check_interval
         device_data["check_interval"] = get_default_check_interval(device_data.get("device_type", ""))
     new_device = await create_device(session, device_data)
-    
-    from core.device_cache import device_cache
+
     await device_cache.refresh_from_db()
-    
+
     return {"id": new_device.id, "message": "Device created successfully"}
 
 @router.post("/api/devices/bulk")
 async def add_devices_bulk(devices: List[DeviceCreate], session: AsyncSession = Depends(get_db)):
+    # Limit bulk import to prevent DoS
+    MAX_BULK_IMPORT = 500
+    if len(devices) > MAX_BULK_IMPORT:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Bulk import limit exceeded. Maximum {MAX_BULK_IMPORT} devices per request."
+        )
     added_ids = []
     skipped = 0
     errors = 0
-    
+
     # Pre-fetch existing IPs to skip duplicates
-    from sqlalchemy import select
     result = await session.execute(select(Device.ip_address))
     existing_ips = {row[0] for row in result.fetchall()}
-    from core.utils import get_default_check_interval
-    
+
     for device in devices:
         try:
             device_data = device.model_dump()
@@ -300,7 +315,6 @@ async def add_devices_bulk(devices: List[DeviceCreate], session: AsyncSession = 
     
     await session.commit()
     
-    from core.device_cache import device_cache
     await device_cache.refresh_from_db()
     
     return {"added_count": len(added_ids), "skipped": skipped, "errors": errors, "message": f"{len(added_ids)} device(s) created"}
@@ -331,7 +345,6 @@ async def edit_device(device_id: int, device: DeviceUpdate, session: AsyncSessio
 
         await notify_state_change(old_status, new_status, updated)
 
-    from core.device_cache import device_cache
     await device_cache.refresh_from_db()
     
     return {"message": "Device updated successfully"}
@@ -340,7 +353,6 @@ async def edit_device(device_id: int, device: DeviceUpdate, session: AsyncSessio
 async def remove_device(device_id: int, session: AsyncSession = Depends(get_db)):
     await delete_device(session, device_id)
     
-    from core.device_cache import device_cache
     await device_cache.refresh_from_db()
     
     return {"message": "Device deleted successfully"}
@@ -429,7 +441,6 @@ async def lan_sweep_worker(subnet: str):
         if network.prefixlen < 24:
             logger.warning(f"Subnet {subnet} is larger than /24, skipping discovery")
             # Notify frontend that discovery was skipped
-            from api.stream import sse_publisher
             await sse_publisher("discover_error", {"subnet": subnet, "reason": f"Subnet {subnet} is larger than /24, skipping discovery"})
             return
             
@@ -440,14 +451,12 @@ async def lan_sweep_worker(subnet: str):
         active_ips = [r["ip_address"] for r in results if r["status"] == "ONLINE"]
         
         # Notify the frontend via SSE that discovery is complete
-        from api.stream import sse_publisher
         await sse_publisher("discover_complete", {"subnet": subnet, "active_ips": active_ips})
         
     except Exception as e:
         logger.error(f"Discovery error for {subnet}: {e}", exc_info=True)
         # Notify frontend of the error so it doesn't hang indefinitely
         try:
-            from api.stream import sse_publisher
             await sse_publisher("discover_error", {"subnet": subnet, "reason": str(e)})
         except Exception:
             pass
@@ -462,7 +471,6 @@ async def discover_lan(req: DiscoverRequest, background_tasks: BackgroundTasks):
 async def test_snmp_device(device_id: int, session: AsyncSession = Depends(get_db)):
     """Manually trigger an SNMP poll for a single device and return the raw result."""
     from core.snmp_engine import fetch_snmp_data
-    from database.session import async_session
 
     # Fetch device from main DB
     stmt = select(Device).where(Device.id == device_id)
@@ -479,8 +487,7 @@ async def test_snmp_device(device_id: int, session: AsyncSession = Depends(get_d
             "reason": f"SNMP version is '{device.snmp_version}' (not v2c/v3)"
         }
 
-    import time as _time
-    t0 = _time.monotonic()
+    t0 = time.monotonic()
     try:
         data = await fetch_snmp_data(
             device_ip=device.ip_address,

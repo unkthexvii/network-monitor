@@ -4,6 +4,7 @@
 
 :root {
   --bg-base: #121212;
+  --bg-wall: #121212;
   --bg-rail: rgba(30, 30, 30, 0.4);
   --bg-card: rgba(40, 40, 40, 0.5);
   --border: rgba(255, 255, 255, 0.08);
@@ -15,7 +16,7 @@
   --online: #b2ff59;   /* Neon online */
   --offline: #ff3d00;  /* Neon offline */
   --paused: #ffb300;   /* Neon paused (Yellowish) */
-  
+
   --radius-card: 20px;
   --rail-width: 450px;
 
@@ -256,6 +257,13 @@ body {
 }
 
 /* Dark Theme Scrollbars */
+
+/* Firefox scrollbar styling */
+html {
+  scrollbar-width: thin;
+  scrollbar-color: #444 transparent;
+}
+
 ::-webkit-scrollbar {
   width: 8px;
   height: 8px;
@@ -311,4 +319,87 @@ body {
   
   .event .msg { font-size: 0.85rem; }
   .event .device { font-size: 1rem; }
+}
+
+
+/* Extracted Inline Styles - Wall Page */
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
+.header-back-link {
+  color: var(--text-secondary);
+  text-decoration: none;
+  font-size: 1.2rem;
+  transition: color 0.2s;
+}
+.rail-feed-msg {
+  margin: 40px;
+}
+.has-remark {
+  border-bottom: 1px dotted #888;
+  cursor: help;
+}
+.event-ip {
+  font-size: 0.85rem;
+  color: rgba(255, 255, 255, 0.5);
+  font-family: var(--font-mono);
+  margin-bottom: 4px;
+}
+.msg-dim {
+  opacity: 0.6;
+}
+.msg-paused {
+  color: var(--paused);
+  font-weight: bold;
+}
+.wall-stat-row {
+  display: flex;
+  justify-content: center;
+  gap: 50px;
+  align-items: center;
+  margin-bottom: 10px;
+}
+.wall-stat-col {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+}
+.wall-stat-number {
+  font-size: 2.5rem;
+  font-weight: 700;
+  line-height: 1;
+}
+.wall-stat-number--offline { color: var(--offline); }
+.wall-stat-number--online { color: var(--online); }
+.wall-stat-number--paused { color: var(--paused); }
+.wall-stat-number--total { color: #fff; }
+.wall-stat-label {
+  font-size: 0.9rem;
+  color: #888;
+  margin-top: 8px;
+  display: flex;
+  align-items: center;
+}
+.wall-stat-label--nowrap {
+  white-space: nowrap;
+}
+.wall-stat-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-right: 6px;
+}
+.wall-stat-dot--offline { background: var(--offline); box-shadow: 0 0 8px var(--offline); }
+.wall-stat-dot--online { background: var(--online); box-shadow: 0 0 8px var(--online); }
+.wall-stat-dot--paused { background: var(--paused); box-shadow: 0 0 8px var(--paused); }
+.wall-stat-dot--total { background: #fff; box-shadow: 0 0 8px rgba(255,255,255,0.5); }
+.overlay-subtitle {
+  font-size: 0.8rem;
+  opacity: 0.6;
+}
+.overlay-icon {
+  font-size: 3rem;
 }

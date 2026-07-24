@@ -1,9 +1,9 @@
-"""Tests for core/auth.py — password hashing and session store."""
+﻿"""Tests for core/auth.py — password hashing and session store."""
 import time
 from core.auth import hash_password, verify_password, SessionStore
 
 
-# ── Password Hashing ──
+# -- Password Hashing --
 
 def test_hash_password_returns_salt_and_hash():
     salt, h = hash_password("mypassword")
@@ -15,10 +15,21 @@ def test_hash_password_returns_salt_and_hash():
 
 def test_hash_password_deterministic_with_same_salt():
     salt1, h1 = hash_password("test")
-    h2 = hash_password.__wrapped__("test") if hasattr(hash_password, "__wrapped__") else None
-    # Same password + same salt should produce same hash
-    # But since salt is random, we test verify instead
-    assert verify_password("test", salt1, h1) is True
+    # hash_password has no __wrapped__ attribute; verify determinism by
+    # re-hashing with the *same* salt and checking the result matches.
+    from core.auth import _HASH_ALGO, _HASH_ITERATIONS, _HASH_LENGTH
+    import hashlib
+    h2 = hashlib.pbkdf2_hmac(
+        _HASH_ALGO, b"test", salt1.encode(), _HASH_ITERATIONS, dklen=_HASH_LENGTH
+    ).hex()
+    assert h2 == h1
+
+
+def test_hash_password_different_salts_differ():
+    salt1, h1 = hash_password("test")
+    salt2, h2 = hash_password("test")
+    assert salt1 != salt2  # random salts should differ
+    assert h1 != h2
 
 
 def test_verify_password_correct():
@@ -37,7 +48,7 @@ def test_verify_password_empty():
     assert verify_password("notempty", salt, h) is False
 
 
-# ── Session Store ──
+# -- Session Store --
 
 def test_session_create_and_validate():
     store = SessionStore(ttl=3600)

@@ -28,6 +28,7 @@ def auth_client(client):
 
 # ── Readonly endpoint (no auth required) ──
 
+@pytest.mark.integration
 def test_readonly_endpoint(client):
     r = client.get("/api/readonly")
     assert r.status_code == 200
@@ -38,23 +39,27 @@ def test_readonly_endpoint(client):
 
 # ── Auth endpoints ──
 
+@pytest.mark.integration
 def test_login_wrong_password(client):
     r = client.post("/api/auth/login", json={"password": "wrongpassword"})
     assert r.status_code in (401, 403)
 
 
+@pytest.mark.integration
 def test_login_correct_password(client):
     r = client.post("/api/auth/login", json={"password": ADMIN_PASSWORD})
     assert r.status_code == 200
     assert "auth_token" in r.cookies  # httpOnly cookie is set
 
 
+@pytest.mark.integration
 def test_protected_endpoint_no_auth(client):
     r = client.get("/api/devices")
     # GET is allowed without auth (read-only), so 200
     assert r.status_code == 200
 
 
+@pytest.mark.integration
 def test_protected_endpoint_with_auth(auth_client):
     r = auth_client.get("/api/devices")
     assert r.status_code == 200
@@ -62,6 +67,7 @@ def test_protected_endpoint_with_auth(auth_client):
 
 # ── Devices API ──
 
+@pytest.mark.integration
 def test_get_devices(client):
     r = client.get("/api/devices")
     assert r.status_code == 200
@@ -69,6 +75,7 @@ def test_get_devices(client):
     assert isinstance(data, list)
 
 
+@pytest.mark.integration
 def test_get_devices_paginated(client):
     r = client.get("/api/devices/paginated", params={"page": 1, "limit": 10})
     assert r.status_code == 200
@@ -79,6 +86,7 @@ def test_get_devices_paginated(client):
     assert "pages" in data
 
 
+@pytest.mark.integration
 def test_get_device_names(client):
     r = client.get("/api/devices/names")
     assert r.status_code == 200
@@ -86,6 +94,7 @@ def test_get_device_names(client):
     assert isinstance(data, list)
 
 
+@pytest.mark.integration
 def test_get_subnets(client):
     r = client.get("/api/devices/subnets")
     assert r.status_code == 200
@@ -96,11 +105,13 @@ def test_get_subnets(client):
 
 # ── Dashboard API ──
 
+@pytest.mark.integration
 def test_dashboard_stats(client):
     r = client.get("/api/dashboard/stats")
     assert r.status_code == 200
 
 
+@pytest.mark.integration
 def test_dashboard_events(client):
     r = client.get("/api/dashboard/events")
     assert r.status_code == 200
@@ -108,6 +119,7 @@ def test_dashboard_events(client):
 
 # ── Alerts API ──
 
+@pytest.mark.integration
 def test_get_alerts(client):
     r = client.get("/api/alerts", params={"limit": 10})
     assert r.status_code == 200
@@ -115,14 +127,18 @@ def test_get_alerts(client):
 
 # ── Reports API ──
 
+@pytest.mark.integration
 def test_reports_ui_data(client):
     r = client.get("/api/reports/ui_data", params={"device_id": 1, "timeframe": "24h"})
     # 200 if device exists, 422 if missing param, 500 if no device with id=1
-    assert r.status_code in (200, 422, 500)
+    assert r.status_code == 200
+    data = r.json()
+    assert "global_uptime" in data
 
 
 # ── Topology API ──
 
+@pytest.mark.integration
 def test_get_topology(client):
     r = client.get("/api/topology")
     assert r.status_code == 200
@@ -130,12 +146,14 @@ def test_get_topology(client):
 
 # ── Static files ──
 
+@pytest.mark.integration
 def test_index_html(client):
     r = client.get("/")
     assert r.status_code == 200
     assert "html" in r.headers.get("content-type", "")
 
 
+@pytest.mark.integration
 def test_wall_page(client):
     r = client.get("/wall")
     assert r.status_code == 200

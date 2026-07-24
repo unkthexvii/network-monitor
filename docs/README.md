@@ -11,6 +11,7 @@ Welcome to the documentation for the Network Monitoring System. This system moni
   - Broad system architecture and directory layouts.
   - Inter-process communication logic (REST and SSE streams).
   - Main application lifespan events and Windows startup checks.
+  - **Mermaid architecture diagrams** showing component relationships.
 
 - [2. Frontend UI Documentation](frontend.md)
   - HTML structure and dark NOC style system.

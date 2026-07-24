@@ -6,6 +6,13 @@ echo.
 echo Launching the compiled executable...
 echo.
 
+if not exist "dist\NetworkMonitor.exe" (
+    echo [ERROR] NetworkMonitor.exe not found in dist/ folder.
+    echo Please run build.bat first.
+    pause
+    exit /b 1
+)
+
 .\dist\NetworkMonitor.exe
 
 echo.

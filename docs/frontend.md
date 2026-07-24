@@ -26,9 +26,8 @@ The page transitions dynamically using tab panes:
 - **Add Device Modal:** Input fields for Name, IP, Type (Switch, Router, Controller, AP, Server, etc.), Check Interval, Remarks, and detailed SNMP version settings (v2c/v3 with community strings/auth protocols/encryption keys).
 - **Device Details Slide-out Offcanvas:** Triggered by clicking any device. It reveals:
   - Latency and packet loss trend graphs for selected time periods (1h, 24h, 7d).
-  - Detailed SNMP System Info: System Name, Uptime, Description.
-  - SNMP Asset Info: Dynamic client count indicators for WLC controllers, and hardware serial numbers.
-  - Device configuration settings update form.
+  - Detailed SNMP System Info: System Name, Uptime, Description, Contact, Location.
+  - SNMP Asset Info: WLC client count, AP count, hardware serial number, model name, chassis name, custom data fields, and temperature/CPU/memory metrics (device-type dependent).
 
 ---
 

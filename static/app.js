@@ -5,6 +5,20 @@
 (function() {
     'use strict';
 
+    // Initialize global state
+    window.discoveredDevices = {};
+
+    // XSS prevention: escape HTML special characters in user-controlled data
+    function escapeHtml(str) {
+        if (str === null || str === undefined) return '';
+        return String(str)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    }
+
     window.toggleSnmpFields = function() {
         const v = document.getElementById('newDeviceSnmpVersion').value;
         document.getElementById('snmpV2Fields').style.display = (v === 'v2c') ? 'block' : 'none';
@@ -53,11 +67,11 @@
         const iconClass = getEventIcon(evt.alert_type);
         const ts = new Date(evt.timestamp).toLocaleString('en-GB', { hour12: true }).toUpperCase();
         
-        let msgHtml = (evt.message || '').replace(/\((Downtime|Paused for): (.*?)\)/g, '<span class="text-secondary">(</span><span class="text-secondary">$1: </span><span class="text-warning fw-bold">$2</span><span class="text-secondary">)</span>');
+        let msgHtml = escapeHtml(evt.message || '').replace(/\((Downtime|Paused for): (.*?)\)/g, '<span class="text-secondary">(</span><span class="text-secondary">$1: </span><span class="text-warning fw-bold">$2</span><span class="text-secondary">)</span>');
         
         const tsHtml = `<span class="badge" style="background-color: rgba(0,0,0,0.3); color: #aaa; border: 1px solid #333; font-family: monospace; font-weight: normal; padding: 0.35em 0.5em; font-size: 0.72rem;">${ts}</span>`;
         
-        return `<div class="timeline-item" style="padding-bottom: 0.5rem;"><i class="bi ${iconClass}" style="position: absolute; left: -6px; top: 0px; font-size: 1rem; z-index: 2; background-color: #1a1a1a; border-radius: 50%;"></i><div class="d-flex flex-column"><div class="d-flex align-items-center mb-1"><span class="fw-bold ${sc} me-3" style="font-size: 0.85rem;">${evt.alert_type}</span>${tsHtml}</div><div class="text-light" style="font-size: 0.85rem; opacity: 0.9;">${msgHtml}</div></div></div>`;
+        return `<div class="timeline-item" style="padding-bottom: 0.5rem;"><i class="bi ${iconClass}" style="position: absolute; left: -6px; top: 0px; font-size: 1rem; z-index: 2; background-color: #1a1a1a; border-radius: 50%;"></i><div class="d-flex flex-column"><div class="d-flex align-items-center mb-1"><span class="fw-bold ${sc} me-3" style="font-size: 0.85rem;">${escapeHtml(evt.alert_type)}</span>${tsHtml}</div><div class="text-light" style="font-size: 0.85rem; opacity: 0.9;">${msgHtml}</div></div></div>`;
     };
 
     // =========================================================
@@ -184,7 +198,7 @@
                     var cnt = document.getElementById('discoveredCount');
                     if (cnt) cnt.innerText = '0';
                     var list = document.getElementById('discoverResultsList');
-                    if (list) list.innerHTML = '<tr><td colspan="4" class="text-danger text-center">Discovery failed: ' + (data.reason || 'Unknown error') + '</td></tr>';
+                    if (list) list.innerHTML = '<tr><td colspan="4" class="text-danger text-center">Discovery failed: ' + escapeHtml(data.reason || 'Unknown error') + '</td></tr>';
                 }
             }
         },
@@ -193,7 +207,7 @@
             if (el) el.style.display = 'none';
         },
         onDenied: function(d) {
-            showSseBanner('Too many tabs open (' + d.current + '/' + d.limit + '). Close other tabs and reload.', true);
+            showSseBanner('Too many tabs open (' + escapeHtml(d.current) + '/' + escapeHtml(d.limit) + '). Close other tabs and reload.', true);
         },
         onError: function() {
             showSseBanner('Live updates paused \u2014 reconnecting...', false);
@@ -235,7 +249,7 @@
         const toast = document.createElement('div');
         toast.id = 'errorToast';
         toast.style.cssText = 'position:fixed; bottom:20px; left:50%; transform:translateX(-50%); z-index:99999; background:#1e1e1e; color:#ff6b6b; border:1px solid #ff6b6b44; border-radius:8px; padding:12px 24px; font-size:0.9rem; box-shadow:0 4px 20px rgba(0,0,0,0.5); transition:opacity 0.3s;';
-        toast.innerHTML = '<i class="bi bi-exclamation-triangle me-2"></i> ' + message;
+        toast.innerHTML = '<i class="bi bi-exclamation-triangle me-2"></i> ' + escapeHtml(message);
         document.body.appendChild(toast);
         setTimeout(() => { toast.style.opacity = '0'; setTimeout(() => toast.remove(), 300); }, duration);
     }
@@ -566,16 +580,16 @@
                 const iconClass = getEventIcon(evt.alert_type);
                 const textColor = getEventTextColor(evt.alert_type);
                 const timeStr = new Date(evt.timestamp).toLocaleTimeString('en-GB', { hour12: true }).toUpperCase();
-                const remarkHtml = evt.remark ? ` title="${evt.remark.replace(/"/g, '&quot;')}"` : '';
+                const remarkHtml = evt.remark ? ` title="${escapeHtml(evt.remark)}"` : '';
                 const remarkStyle = evt.remark ? 'border-bottom: 1px dotted #888; cursor: help;' : '';
                 return `
                     <li class="feed-item">
                         <div class="feed-icon"><i class="bi ${iconClass}"></i></div>
                         <div class="feed-details">
-                            <div class="feed-device"><span${remarkHtml} style="${remarkStyle}">${evt.device_name}</span> <span class="text-secondary fw-normal ms-2" style="font-size:0.8rem;">${evt.ip_address}</span></div>
+                            <div class="feed-device"><span${remarkHtml} style="${remarkStyle}">${escapeHtml(evt.device_name)}</span> <span class="text-secondary fw-normal ms-2" style="font-size:0.8rem;">${escapeHtml(evt.ip_address)}</span></div>
                             <div class="feed-time">${timeStr}</div>
                         </div>
-                        <div class="feed-status text-${textColor}">${evt.alert_type}</div>
+                        <div class="feed-status text-${textColor}">${escapeHtml(evt.alert_type)}</div>
                     </li>`;
             }).join('');
         }, () => {
@@ -587,9 +601,9 @@
             const list = document.getElementById('offline-devices-list');
             if (!list) return;
             list.innerHTML = items.map(dev => {
-                const remarkHtml = dev.remark ? ` title="${dev.remark.replace(/"/g, '&quot;')}"` : '';
+                const remarkHtml = dev.remark ? ` title="${escapeHtml(dev.remark)}"` : '';
                 const remarkStyle = dev.remark ? 'border-bottom: 1px dotted #888; cursor: help;' : '';
-                return `<tr><td class="text-white fw-medium"><span${remarkHtml} style="${remarkStyle}">${dev.name}</span></td><td class="text-secondary" style="font-family: monospace;">${dev.ip_address}</td></tr>`;
+                return `<tr><td class="text-white fw-medium"><span${remarkHtml} style="${remarkStyle}">${escapeHtml(dev.name)}</span></td><td class="text-secondary" style="font-family: monospace;">${escapeHtml(dev.ip_address)}</td></tr>`;
             }).join('');
         }, () => {
             const list = document.getElementById('offline-devices-list');
@@ -689,7 +703,7 @@
                         available.filter(d => d.name.toLowerCase().includes(filter) || d.ip_address.toLowerCase().includes(filter)).forEach(d => {
                             const btn = document.createElement('button');
                             btn.className = 'list-group-item list-group-item-action bg-transparent text-white border-secondary mb-1';
-                            btn.innerHTML = `<strong>${d.name}</strong> <small class="text-secondary ms-2">${d.ip_address}</small>`;
+                            btn.innerHTML = `<strong>${escapeHtml(d.name)}</strong> <small class="text-secondary ms-2">${escapeHtml(d.ip_address)}</small>`;
                             btn.onclick = () => {
                                 // determine icon code
                                 let dt = (d.device_type || "").toLowerCase();
@@ -701,10 +715,10 @@
                                 else if(dt.includes("database")) icon_code="\uf8c4";
                                 
                                 nodeData.id = d.id;
-                                nodeData.label = `${d.name}\n${d.ip_address}`;
+                                nodeData.label = `${escapeHtml(d.name)}\n${escapeHtml(d.ip_address)}`;
                                 nodeData.shape = 'icon';
                                 nodeData.icon = { face: 'bootstrap-icons', code: icon_code, size: 50, color: '#28a745' };
-                                nodeData.title = d.remark ? `Remark: ${d.remark}` : undefined;
+                                nodeData.title = d.remark ? `Remark: ${escapeHtml(d.remark)}` : undefined;
                                 callback(nodeData);
                                 modal.hide();
                             };
@@ -960,7 +974,7 @@
                 const currentVal = subnetEl.value;
                 let opts = `<option value="all" style="background: #1a1a1a; color: #fff;">All Subnets</option>`;
                 availableSubnets.forEach(sub => {
-                    opts += `<option value="${sub}" style="background: #1a1a1a; color: #fff;">${sub}</option>`;
+                    opts += `<option value="${escapeHtml(sub)}" style="background: #1a1a1a; color: #fff;">${escapeHtml(sub)}</option>`;
                 });
                 subnetEl.innerHTML = opts;
                 subnetEl.value = availableSubnets.includes(currentVal) ? currentVal : 'all';
@@ -991,8 +1005,8 @@
                 let displayStatus = !dev.enabled ? 'PAUSED' : dev.status;
                 const colorClass = displayStatus === 'ONLINE' ? 'success' : (displayStatus === 'OFFLINE' ? 'danger' : (displayStatus === 'PAUSED' ? 'warning' : 'secondary'));
                 const indClass = displayStatus === 'ONLINE' ? 'online' : (displayStatus === 'OFFLINE' ? 'offline' : (displayStatus === 'PAUSED' ? 'attention' : 'unknown'));
-                
-                const remarkHtml = dev.remark ? ` title="${dev.remark.replace(/"/g, '&quot;')}"` : '';
+
+                const remarkHtml = dev.remark ? ` title="${escapeHtml(dev.remark)}"` : '';
                 const remarkStyle = dev.remark ? 'border-bottom: 1px dotted #888; cursor: help;' : '';
 
                 return `
@@ -1000,10 +1014,10 @@
                         <td class="text-center stop-propagation">
                             ${(window.isReadonly || !window.isAuthenticated) ? '' : '<input class="form-check-input row-checkbox bg-transparent border-secondary shadow-none" type="checkbox" data-id="' + dev.id + '">'}
                         </td>
-                        <td class="text-white fw-medium"><span${remarkHtml} style="${remarkStyle}">${dev.name}</span></td>
-                        <td class="text-secondary">${dev.device_type}</td>
-                        <td class="text-secondary" style="font-family: monospace;">${dev.ip_address}</td>
-                        <td class="text-${colorClass} fw-bold"><span class="indicator ind-${indClass}"></span>${displayStatus}</td>
+                        <td class="text-white fw-medium"><span${remarkHtml} style="${remarkStyle}">${escapeHtml(dev.name)}</span></td>
+                        <td class="text-secondary">${escapeHtml(dev.device_type)}</td>
+                        <td class="text-secondary" style="font-family: monospace;">${escapeHtml(dev.ip_address)}</td>
+                        <td class="text-${colorClass} fw-bold"><span class="indicator ind-${indClass}"></span>${escapeHtml(displayStatus)}</td>
                         <td class="text-center" style="vertical-align: middle;">
                             ${(window.isReadonly || !window.isAuthenticated) ? '' : '<i class="bi bi-trash text-danger" style="font-size: 1.15rem; cursor: pointer;" data-action="delete-device" data-id="' + dev.id + '"></i>'}
                         </td>
@@ -1087,23 +1101,23 @@
                 const getAlertColor = (type) => type === 'OFFLINE' ? 'danger' : (type === 'PAUSED' ? 'warning' : 'success');
                 const getIndicatorClass = (type) => type === 'OFFLINE' ? 'offline' : (type === 'PAUSED' ? 'attention' : 'online');
                 
-                const remarkHtml = devData.remark ? ` title="${devData.remark.replace(/"/g, '&quot;')}"` : '';
+                const remarkHtml = devData.remark ? ` title="${escapeHtml(devData.remark)}"` : '';
                 const remarkStyle = devData.remark ? 'border-bottom: 1px dotted #888; cursor: help;' : '';
 
                 let html = `
-                    <tr class="${stripe}" data-bs-toggle="collapse" data-bs-target="#collapse-${sid}" style="cursor: pointer;">
-                        <td class="text-white fw-medium ps-3"><span${remarkHtml} style="${remarkStyle}">${devData.device}</span></td>
-                        <td class="text-secondary" style="font-family: monospace;">${devData.ip}</td>
-                        <td class="text-${getAlertColor(cur)} fw-bold"><span class="indicator ind-${getIndicatorClass(cur)}"></span>${hasEvents ? cur : 'NO ALERTS'}</td>
+                    <tr class="${stripe}" data-bs-toggle="collapse" data-bs-target="#collapse-${escapeHtml(sid)}" style="cursor: pointer;">
+                        <td class="text-white fw-medium ps-3"><span${remarkHtml} style="${remarkStyle}">${escapeHtml(devData.device)}</span></td>
+                        <td class="text-secondary" style="font-family: monospace;">${escapeHtml(devData.ip)}</td>
+                        <td class="text-${getAlertColor(cur)} fw-bold"><span class="indicator ind-${getIndicatorClass(cur)}"></span>${hasEvents ? escapeHtml(cur) : 'NO ALERTS'}</td>
                     </tr>
-                    <tr class="${stripe}"><td colspan="3" class="p-0 border-0"><div class="collapse" id="collapse-${sid}" data-bs-parent="#alertsAccordion"><div class="p-4" style="background-color: rgba(255,255,255,0.01); border-bottom: 1px solid #1f1f1f;"><div class="timeline m-0 p-0 ps-3">`;
+                    <tr class="${stripe}"><td colspan="3" class="p-0 border-0"><div class="collapse" id="collapse-${escapeHtml(sid)}" data-bs-parent="#alertsAccordion"><div class="p-4" style="background-color: rgba(255,255,255,0.01); border-bottom: 1px solid #1f1f1f;"><div class="timeline m-0 p-0 ps-3">`;
 
                 if (hasEvents) {
                     devData.events.forEach(evt => {
                         html += window.renderTimelineEvent(evt);
                     });
                     html += `<div class="mt-3 pt-2 border-top border-secondary border-opacity-25">
-                                <a href="#" data-action="view-report" data-device-id="${sid}" data-device-name="${devData.device}" class="text-primary text-decoration-none" style="font-size: 0.85rem; font-weight: 500;">
+                                <a href="#" data-action="view-report" data-device-id="${escapeHtml(sid)}" data-device-name="${escapeHtml(devData.device)}" class="text-primary text-decoration-none" style="font-size: 0.85rem; font-weight: 500;">
                                     <i class="bi bi-box-arrow-up-right me-1"></i>View full history in Reports
                                 </a>
                              </div>`;
@@ -1270,7 +1284,7 @@
         let displayStatus = !dev.enabled ? 'PAUSED' : dev.status;
         const colorClass = displayStatus === 'ONLINE' ? 'success' : (displayStatus === 'OFFLINE' ? 'danger' : (displayStatus === 'PAUSED' ? 'warning' : 'secondary'));
         document.getElementById('detailDeviceName').innerText = dev.name;
-        document.getElementById('detailDeviceBadge').innerHTML = `<i class="bi bi-circle-fill text-${colorClass} me-1" style="font-size: 0.5rem; vertical-align: middle;"></i> ${displayStatus}`;
+        document.getElementById('detailDeviceBadge').innerHTML = `<i class="bi bi-circle-fill text-${colorClass} me-1" style="font-size: 0.5rem; vertical-align: middle;"></i> ${escapeHtml(displayStatus)}`;
         
         const filterSelect = document.getElementById('vitalsTimeFilter');
         if (filterSelect) filterSelect.value = '24h';
@@ -1346,8 +1360,8 @@
                                 const val = dev.snmp_custom_data[key];
                                 return `
                                     <div class="mt-2">
-                                        <div class="text-secondary mb-1" style="font-size: 0.75rem; text-transform: uppercase;">${key}</div>
-                                        <div class="text-white" style="font-size: 0.9rem;">${val}</div>
+                                        <div class="text-secondary mb-1" style="font-size: 0.75rem; text-transform: uppercase;">${escapeHtml(key)}</div>
+                                        <div class="text-white" style="font-size: 0.9rem;">${escapeHtml(val)}</div>
                                     </div>
                                 `;
                             }).join('');
@@ -1470,7 +1484,7 @@
 
                 let displayStatus = !dev.enabled ? 'PAUSED' : dev.status;
                 const colorClass = displayStatus === 'ONLINE' ? 'success' : (displayStatus === 'OFFLINE' ? 'danger' : (displayStatus === 'PAUSED' ? 'warning' : 'secondary'));
-                document.getElementById('detailDeviceBadge').innerHTML = `<i class="bi bi-circle-fill text-${colorClass} me-1" style="font-size: 0.5rem; vertical-align: middle;"></i> ${displayStatus}`;
+                document.getElementById('detailDeviceBadge').innerHTML = `<i class="bi bi-circle-fill text-${colorClass} me-1" style="font-size: 0.5rem; vertical-align: middle;"></i> ${escapeHtml(displayStatus)}`;
 
                 btn.innerText = !dev.enabled ? 'Resume Monitoring' : 'Pause Monitoring';
                 btn.className = !dev.enabled ? 'btn btn-outline-success w-100 py-2' : 'btn btn-outline-warning w-100 py-2';
@@ -1917,7 +1931,7 @@
             const list = document.getElementById('discoverResultsList');
             window.discoveredDevices = activeIps.map(ip => ({ ip, host: ip, man: 'Unknown' }));
             list.innerHTML = window.discoveredDevices.map((dev, idx) =>
-                `<tr><td class="ps-3 border-secondary"><input class="form-check-input discover-checkbox bg-transparent border-secondary shadow-none" type="checkbox" data-idx="${idx}"></td><td class="text-secondary border-secondary" style="font-family: monospace;">${dev.ip}</td><td class="text-white border-secondary">${dev.host}</td><td class="text-secondary border-secondary">${dev.man}</td></tr>`
+                `<tr><td class="ps-3 border-secondary"><input class="form-check-input discover-checkbox bg-transparent border-secondary shadow-none" type="checkbox" data-idx="${idx}"></td><td class="text-secondary border-secondary" style="font-family: monospace;">${escapeHtml(dev.ip)}</td><td class="text-white border-secondary">${escapeHtml(dev.host)}</td><td class="text-secondary border-secondary">${escapeHtml(dev.man)}</td></tr>`
             ).join('');
             const selAll = document.getElementById('discoverSelectAll');
             if (selAll) {

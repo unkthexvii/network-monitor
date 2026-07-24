@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Network Monitoring - Wall</title>
   <link rel="icon" type="image/x-icon" href="/favicon.ico">
@@ -11,7 +12,7 @@
   <link href="/wall.css" rel="stylesheet">
 </head>
 <body>
-  <div id="reconnectOverlay" class="reconnect-overlay hidden">
+  <div id="reconnectOverlay" class="reconnect-overlay hidden" role="alert" aria-live="assertive">
     <div class="spinner"></div>
     <div class="reconnect-text">CONNECTION LOST — RECONNECTING...</div>
   </div>
@@ -20,14 +21,14 @@
     <header class="wall-header">
       <div class="brand">
         <img class="brand-logo" src="/api/logo" alt="Logo" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
-        <div class="brand-fallback" style="display: none; width: 40px; height: 40px; background-color: #fff; color: #000; border-radius: 50%; align-items: center; justify-content: center; font-weight: 900; font-size: 1.2rem;">IN</div>
+        <div class="brand-fallback">IN</div>
         <div class="brand-text">
           <span class="brand-name">Network Monitoring</span>
           <span class="brand-sub">Real-Time Operations</span>
         </div>
       </div>
-      <div class="header-right" style="display: flex; align-items: center; gap: 20px;">
-        <a href="/dashboard" title="Back to Dashboard" class="link-hover-white" style="color: var(--text-secondary); text-decoration: none; font-size: 1.2rem; transition: color 0.2s;"><i class="bi bi-box-arrow-left"></i></a>
+      <div class="header-right">
+        <a href="/dashboard" title="Back to Dashboard" class="link-hover-white header-back-link"><i class="bi bi-box-arrow-left"></i></a>
         <span id="clock" class="clock">--:--:--</span>
       </div>
     </header>
@@ -52,7 +53,7 @@
           <span>Active Outages</span>
           <span>Time Detected</span>
         </div>
-        <div id="outageList" class="outage-list"></div>
+        <div id="outageList" class="outage-list" aria-live="polite" aria-atomic="false"></div>
       </section>
 
       <div id="placeholder" class="placeholder hidden">
@@ -68,8 +69,8 @@
           <span id="railCount" class="count">0</span>
         </div>
       </div>
-      <div id="railFeed" class="rail-feed">
-        <div class="placeholder small" style="margin: 40px;">Loading feed...</div>
+      <div id="railFeed" class="rail-feed" aria-live="polite" aria-atomic="false">
+        <div class="placeholder small rail-feed-msg">Loading feed...</div>
       </div>
     </aside>
   </div>

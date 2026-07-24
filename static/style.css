@@ -499,6 +499,10 @@ div.vis-network div.vis-manipulation .vis-label, div.vis-network div.vis-edit-mo
 }
 
 /* Custom Horizontal Scrollbar */
+.custom-scrollbar-x {
+  scrollbar-width: thin;
+  scrollbar-color: #444 transparent;
+}
 .custom-scrollbar-x::-webkit-scrollbar {
     height: 6px;
 }
@@ -536,4 +540,188 @@ div.vis-network div.vis-manipulation .vis-label, div.vis-network div.vis-edit-mo
 /* Link hover (replaces inline onmouseover/onmouseout) */
 .link-hover-green:hover {
     color: var(--accent-green) !important;
+}
+
+
+/* ==========================================================================
+   Extracted Inline Styles - Dashboard / SPA
+   ========================================================================== */
+
+/* Monospace font utility */
+.font-mono {
+  font-family: 'SF Mono', 'JetBrains Mono', 'Fira Code', monospace;
+}
+
+/* Device name with remark tooltip */
+.has-remark {
+  border-bottom: 1px dotted #888;
+  cursor: help;
+}
+
+/* Pagination button base layout */
+.btn-pagination {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid #333;
+  color: #aaa;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+}
+.btn-pagination:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.btn-pagination i {
+  font-size: 0.7rem;
+}
+
+/* Pagination active page */
+.btn-pagination-active {
+  background: rgba(255, 255, 255, 0.15);
+  border: 1px solid #555;
+  color: #fff;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Pagination inactive page */
+.btn-pagination-inactive {
+  background: transparent;
+  border: 1px solid transparent;
+  color: #888;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+}
+
+/* Pagination ellipsis */
+.pagination-ellipsis {
+  width: 32px;
+  height: 32px;
+}
+
+/* Timeline event icon */
+.timeline-event-icon {
+  position: absolute;
+  left: -6px;
+  top: 0;
+  font-size: 1rem;
+  z-index: 2;
+  background-color: #1a1a1a;
+  border-radius: 50%;
+}
+
+/* Timeline event alert label */
+.timeline-alert-label {
+  font-size: 0.85rem;
+}
+
+/* Timeline event message text */
+.timeline-msg {
+  font-size: 0.85rem;
+  opacity: 0.9;
+}
+
+/* Timeline item spacing */
+.timeline-item {
+  padding-bottom: 0.5rem;
+}
+
+/* Timestamp badge */
+.ts-badge {
+  background-color: rgba(0, 0, 0, 0.3);
+  color: #aaa;
+  border: 1px solid #333;
+  font-family: 'SF Mono', 'JetBrains Mono', 'Fira Code', monospace;
+  font-weight: normal;
+  padding: 0.35em 0.5em;
+  font-size: 0.72rem;
+}
+
+/* Clickable table rows */
+.row-clickable {
+  cursor: pointer;
+}
+
+/* SSE connection banner */
+.sse-banner {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 99999;
+  background: #b71c1c;
+  color: #fff;
+  text-align: center;
+  padding: 8px;
+  font-size: 0.85rem;
+}
+
+/* Error toast notification */
+.error-toast {
+  position: fixed;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 99999;
+  background: #1e1e1e;
+  color: #ff6b6b;
+  border: 1px solid #ff6b6b44;
+  border-radius: 8px;
+  padding: 12px 24px;
+  font-size: 0.9rem;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+  transition: opacity 0.3s;
+}
+
+/* SNMP field label */
+.snmp-field-label {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+}
+
+/* SNMP field value */
+.snmp-field-value {
+  font-size: 0.9rem;
+}
+
+/* Dashboard feed IP address */
+.feed-ip {
+  font-size: 0.8rem;
+}
+
+/* View full report link */
+.view-report-link {
+  font-size: 0.85rem;
+  font-weight: 500;
+}
+
+/* Collapse panel background */
+.collapse-panel-bg {
+  background-color: rgba(255, 255, 255, 0.01);
+  border-bottom: 1px solid #1f1f1f;
+}
+
+/* No results / empty state */
+.no-results-cell {
+  border: none;
+}
+
+.no-results-item {
+  cursor: default;
+}
+
+/* Small status dot in badge */
+.status-dot-sm {
+  font-size: 0.5rem;
+  vertical-align: middle;
 }

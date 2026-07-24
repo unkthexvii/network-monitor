@@ -18,7 +18,21 @@ scheduler = AsyncIOScheduler()
 
 # A simple counter to manage check intervals.
 # If tick % device.check_interval == 0, the device is due for a ping.
-tick = 0
+# Note: In asyncio's single-threaded event loop, this is safe due to the GIL.
+# For multi-process/threading scenarios, this would need asyncio.Lock protection.
+_tick = 0
+
+
+def _get_tick() -> int:
+    """Get current tick value (thread-safe in asyncio context)."""
+    return _tick
+
+
+def _increment_tick() -> int:
+    """Increment tick and return new value (atomic in asyncio context)."""
+    global _tick
+    _tick += 1
+    return _tick
 
 def _handle_task_exception(task: asyncio.Task):
     """Callback attached to fire-and-forget tasks to log exceptions."""
@@ -30,8 +44,7 @@ def _handle_task_exception(task: asyncio.Task):
         pass
 
 async def schedule_pings():
-    global tick
-    tick += 1
+    tick = _increment_tick()
 
     # Read device list from in-memory cache (ZERO database queries)
     enabled = await device_cache.get_enabled_devices()

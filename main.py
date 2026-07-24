@@ -126,7 +126,7 @@ async def lifespan(app: FastAPI):
             session.add(Setting(key="admin_password_salt", value=salt))
             session.add(Setting(key="admin_password_hash", value=pw_hash))
             await session.commit()
-            logger.info(f"Default admin password set to '{DEFAULT_ADMIN_PASSWORD}' — change it via /api/auth/change-password")
+            logger.info("Default admin password has been set. Change it via /api/auth/change-password. If the password is lost, delete the admin_password_hash and admin_password_salt rows from the settings table to reset.")
     
     yield
     
@@ -146,9 +146,9 @@ _CORS_ORIGINS = [
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_CORS_ORIGINS,
-    allow_credentials=False,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_headers=["Content-Type", "Authorization"],
 )
 class CustomGZipMiddleware(GZipMiddleware):
     async def __call__(self, scope, receive, send):
@@ -158,6 +158,27 @@ class CustomGZipMiddleware(GZipMiddleware):
         await super().__call__(scope, receive, send)
 
 app.add_middleware(CustomGZipMiddleware, minimum_size=1000)
+
+_CSP_HEADER = (
+    "default-src 'self'; "
+    "script-src 'self' https://cdn.jsdelivr.net https://unpkg.com; "
+    "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://fonts.googleapis.com; "
+    "font-src https://fonts.gstatic.com; "
+    "img-src 'self' data:; "
+    "connect-src 'self' ws:; "
+    "frame-src 'none'; "
+    "object-src 'none'; "
+    "base-uri 'self'"
+)
+
+@app.middleware("http")
+async def add_security_headers(request, call_next):
+    response = await call_next(request)
+    response.headers["Content-Security-Policy"] = _CSP_HEADER
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["X-XSS-Protection"] = "0"
+    return response
 
 @app.middleware("http")
 async def add_no_cache_headers(request, call_next):
@@ -192,12 +213,7 @@ async def auth_guard(request, call_next):
     if await get_readonly_from_db():
         return JSONResponse(status_code=403, content={"detail": "Read-only mode active"})
 
-    # Non-mutating requests (GET/HEAD/OPTIONS) are allowed without auth —
-    # the frontend uses plain fetch() for read operations.
-    if request.method in ("GET", "HEAD", "OPTIONS"):
-        return await call_next(request)
-
-    # All mutating requests require authentication
+    # All API endpoints require authentication (including GET/HEAD/OPTIONS)
     if request.url.path.startswith("/api/"):
         token = get_token_from_request(request)
         if not token or not session_store.validate(token):

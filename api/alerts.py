@@ -108,7 +108,7 @@ async def get_alerts(
         total_devices = (await session.execute(count_stmt)).scalar() or 0
         
         if total_devices == 0:
-            return {"items": [], "total": 0, "page": page, "pages": 0}
+            return {"items": [], "total": 0, "total_devices": 0, "page": page, "pages": 0}
             
         offset = (page - 1) * limit
         paginated_devs = (await session.execute(dev_stmt.offset(offset).limit(limit))).scalars().all()
@@ -138,6 +138,7 @@ async def get_alerts(
         return {
             "items": alerts_data,
             "total": total_devices,
+            "total_devices": total_devices,
             "page": page,
             "pages": (total_devices + limit - 1) // limit
         }

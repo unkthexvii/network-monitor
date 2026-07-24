@@ -51,10 +51,6 @@ async def _process_ping_chunk(devices: list):
             packet_loss=res["packet_loss"],
         )
 
-        cached_dev = await device_cache.get_device(dev.id)
-        if not cached_dev:
-            continue
-
         ping_status = res["status"]
 
         dev.latency_ms = res["latency_ms"]

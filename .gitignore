@@ -67,3 +67,10 @@ setup-*.ps1
 launch*.ps1
 launch.bat
 build_log.txt
+
+# Internal / security review files — not committed
+CODE_REVIEW.md
+_*.py
+_*.b64
+_*.ps1
+_*.css

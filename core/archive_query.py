@@ -24,25 +24,32 @@ async def _get_federated_db_connection(start_time: datetime, end_time: datetime)
     # in-memory + ATTACH pattern that caused "database disk image is malformed"
     # errors when a second concurrent connection was opened in WAL mode.
     db = await aiosqlite.connect(db_path)
-    
+
     try:
-        archive_dir = os.path.join(os.getcwd(), "archives")
-        
+        # Archive directory is relative to the database directory
+        db_dir = os.path.dirname(db_path)
+        archive_dir = os.path.join(db_dir, "archives")
+
         start_year_month = (start_time.year, start_time.month)
         end_year_month = (end_time.year, end_time.month)
         
         # Validate archive file path to prevent SQL injection via ATTACH DATABASE
         _archive_path_re = re.compile(r'^archive_\d{4}_\d{2}\.db$')
-        
+
+        # Resolve and validate the archive directory to prevent path traversal
+        archive_dir = os.path.abspath(archive_dir)
+
         attached_dbs = []
         curr_y, curr_m = start_year_month
         while (curr_y, curr_m) <= end_year_month:
             arch_filename = f"archive_{curr_y}_{curr_m:02d}.db"
-            arch_path = os.path.join(archive_dir, arch_filename)
-            # Only ATTACH files matching the expected archive pattern
-            if os.path.exists(arch_path) and _archive_path_re.match(arch_filename):
+            arch_path = os.path.abspath(os.path.join(archive_dir, arch_filename))
+            # Only ATTACH files matching the expected archive pattern and within the archive dir
+            if arch_path.startswith(archive_dir + os.sep) and _archive_path_re.match(arch_filename) and os.path.exists(arch_path):
                 db_name = f"arch_{curr_y}_{curr_m:02d}"
-                await db.execute(f"ATTACH DATABASE '{arch_path}' AS \"{db_name}\"")
+                # Escape single quotes in path for SQL safety
+                safe_path = arch_path.replace("'", "''")
+                await db.execute(f"ATTACH DATABASE '{safe_path}' AS \"{db_name}\"")
                 attached_dbs.append(db_name)
             
             curr_m += 1
