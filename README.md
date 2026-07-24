@@ -2,7 +2,7 @@
 
 [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 ![Platform](https://img.shields.io/badge/platform-Windows%207%2B-blue)
-![Python](https://img.shields.io/badge/python-3.10%2B-blue)
+![Python](https://img.shields.io/badge/python-3.12%2B-blue)
 [![Release](https://img.shields.io/github/v/release/unkthexvii/network-monitor)](https://github.com/unkthexvii/network-monitor/releases)
 
 Real-time network surveillance tool for Windows. Monitors endpoints via ICMP ping and SNMP telemetry — with a live web dashboard and **full-screen NOC wall display**.
@@ -58,6 +58,8 @@ Open [http://localhost:8000](http://localhost:8000)
 > ⚠️ **Administrator privileges are required** for ICMP ping to work on Windows.
 > ℹ️ The release EXE does **not** include any logo file — place your own logo in the `logo/` folder next to the executable for branded PDF reports.
 
+> 💡 After extracting the release EXE, you can also use `run_on_win7.bat` to auto-elevate and launch. Read `docs/README.md` for the full documentation index.
+
 ---
 
 ## First-Time Setup
@@ -106,11 +108,14 @@ All settings are in `core/config.py`. Override via environment variables:
 | `MONITOR_PING_TIMEOUT` | `1.0` | Ping timeout in seconds |
 | `MONITOR_OFFLINE_THRESHOLD` | `3` | Consecutive failures to declare OFFLINE |
 | `MONITOR_ONLINE_THRESHOLD` | `3` | Consecutive successes to declare ONLINE |
-| `MONITOR_RETENTION_DAYS` | `7` | Raw ping data retention (days) |
+| `MONITOR_PING_INTERVAL` | `0.2` | Seconds between ICMP pings |
 | `MONITOR_STAT_RETENTION_DAYS` | `7` | Minute stats retention (days) |
 | `MONITOR_EVENT_RETENTION_DAYS` | `90` | Alert history retention (days) |
 | `MONITOR_DATABASE_URL` | `sqlite+aiosqlite:///monitor.db` | Database path |
 | `MONITOR_CACHE_TTL` | `60` | Dashboard/report cache TTL (seconds) |
+| `MONITOR_READONLY` | `false` | Global read-only mode (disables all mutations) |
+| `MONITOR_DEFAULT_PASSWORD` | *(random)* | Initial admin password override |
+| `MONITOR_SESSION_HOURS` | `24` | Auth session lifetime (hours) |
 
 ---
 
@@ -168,3 +173,4 @@ powershell -c "irm https://astral.sh/uv/install.ps1 | iex"
 - [Architecture Overview](docs/overview.md)
 - [Backend Details](docs/backend.md)
 - [Frontend UI](docs/frontend.md)
+- [Documentation Index](docs/README.md)
