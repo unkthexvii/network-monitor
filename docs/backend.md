@@ -28,6 +28,7 @@ To prevent database locking and increase write throughput for rapid polling, the
 - **Memory Temp Storage & Cache Tuning:** Caches temporary indexes in RAM (`PRAGMA temp_store=MEMORY`) and maps up to 256MB of memory for fast reads (`PRAGMA mmap_size=268435456`). WAL file growth is capped at 64 MB (`PRAGMA journal_size_limit=67108864`).
 - **Foreign Keys ON:** Ensures referential integrity.
 - **Busy Timeout:** 5-second wait before failing on locked DB.
+- **Pool Size:** Limited to 1 connection (`pool_size=1, max_overflow=0`) to prevent SQLite write lock contention from concurrent sessions.
 
 ### Dynamic Auto-Migration
 The system checks schema integrity during database initialization. It uses `PRAGMA table_info` to inspect existing columns and dynamically applies `ALTER TABLE ADD COLUMN` statements. This prevents schema drift when upgrading without corrupting user configuration. Covers `created_at`, `updated_at`, `recovery_count`, and all SNMP fields.

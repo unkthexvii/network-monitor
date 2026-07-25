@@ -119,6 +119,30 @@ All settings are in `core/config.py`. Override via environment variables:
 
 ---
 
+## Remote Diagnostics
+
+Diagnostic endpoints accessible without authentication from any machine on the network:
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/diag/health` | RSS, DB size, WAL, SSE clients, GC objects |
+| GET | `/api/diag/dbstats` | Row counts per table (may be slow on large DBs) |
+| GET | `/api/diag/memory` | Memory snapshot + tracemalloc + GC stats |
+| GET | `/api/diag/tracemalloc?reset=true` | Top 20 allocations by file:line |
+| GET | `/api/diag/cleanup` | Shows rows pending cleanup |
+| POST | `/api/diag/cleanup` | Archive old rows, then delete |
+| GET | `/api/diag/vacuum` | Shows DB page info, wasted space |
+| POST | `/api/diag/vacuum` | Reclaim disk space |
+| GET | `/api/diag/checkpoint` | Shows WAL status |
+| POST | `/api/diag/checkpoint` | Truncate WAL |
+
+Example — check memory on a remote server:
+```powershell
+curl http://SERVER:8000/api/diag/health
+```
+
+---
+
 ## Building from Source
 
 ### Modern Windows (10/11)
