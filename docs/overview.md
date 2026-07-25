@@ -74,7 +74,9 @@ network-monitor/
 │
 ├── core/                      # Core Monitoring Engines & Utilities
 │   ├── alert_engine.py        # SSE callback registry (state machine in workers.py)
-│   ├── cache.py               # Shared Memory Cache base
+│   ├── archive_query.py       # Cross-DB federation for archived monthly databases
+│   ├── auth.py                # Password hashing (PBKDF2) and in-memory session store
+│   ├── cache.py               # Shared Memory Cache base (TTLCache)
 │   ├── config.py              # System constants (Thresholds, intervals, paths)
 │   ├── device_cache.py        # Active devices cached in-memory
 │   ├── icmp_engine.py         # icmplib raw socket ICMP ping runner
@@ -85,13 +87,22 @@ network-monitor/
 │   ├── utils.py               # Network helpers (IP validation)
 │   └── workers.py             # ICMP/SNMP background worker threads
 │
+├── api/                       # API Routers & Endpoints
+│   ├── alerts.py              # Alert history, filtering, pagination
+│   ├── auth.py                # Login/logout/change-password, rate limiting
+│   ├── dashboard.py           # Stats, recent events, device counts
+│   ├── devices.py             # Device CRUD, discovery, bulk import
+│   ├── reports.py             # PDF report generation and downloads
+│   ├── stream.py              # Server-Sent Events (SSE) real-time stream
+│   └── topology.py            # Topology tabs, nodes, and links
+│
 ├── database/                  # Database Layer
 │   ├── models.py              # SQLAlchemy Schema Models
 │   ├── repository.py          # Database operations abstraction layer
 │   └── session.py             # DB connection pool, SQLite WAL optimization, Auto-Migrations
 │
 ├── reporting/                 # Reports Module
-│   └── pdf_generator.py      # fpdf2 PDF building engine
+│   └── pdf_generator.py       # fpdf2 PDF building engine
 │
 ├── static/                    # Frontend Static Files
 │   ├── index.html             # UI Structure (Bootstrap, Icons, Custom Cards)

@@ -25,7 +25,7 @@ The database is built on **SQLite** using **SQLAlchemy Asyncio** with the `aiosq
 To prevent database locking and increase write throughput for rapid polling, the connection engine enforces the following PRAGMAs:
 - **Write-Ahead Logging (WAL):** Enables concurrent reads and writes.
 - **Synchronous Mode = NORMAL:** Reduces disk synchronization cycles.
-- **Memory Temp Storage & Cache Tuning:** Caches temporary indexes in RAM (`PRAGMA temp_store=MEMORY`) and maps up to 256MB of memory for fast reads (`PRAGMA mmap_size=268435456`). WAL file growth is capped at 64 MB (`PRAGMA journal_size_limit=67108864`).
+- **Memory Temp Storage & Cache Tuning:** Caches temporary indexes in RAM (`PRAGMA temp_store=MEMORY`) and maps up to 256MB of memory for fast reads (`PRAGMA mmap_size=268435456`). Cache size is set to 20MB (`PRAGMA cache_size=-20000`). WAL file growth is capped at 64 MB per connection (`PRAGMA journal_size_limit=67108864`). WAL size is **per-connection**; a global cap is not possible with SQLite's connection-level PRAGMAs.
 - **Foreign Keys ON:** Ensures referential integrity.
 - **Busy Timeout:** 5-second wait before failing on locked DB.
 - **Pool Size:** Limited to 1 connection (`pool_size=1, max_overflow=0`) to prevent SQLite write lock contention from concurrent sessions.
@@ -46,6 +46,17 @@ The system checks schema integrity during database initialization. It uses `PRAG
 ## 3. Core Engine Module (`core/`)
 
 The core engines orchestrate network telemetry, threshold checks, debouncing, and alert creation.
+
+### Authentication (`core/auth.py`)
+- PBKDF2-HMAC-SHA256 password hashing with 200,000 iterations and random salt.
+- In-memory `SessionStore` for auth tokens: create, validate, revoke, and cleanup of expired sessions.
+- `get_token_from_request()` extracts the session token from `auth_token` cookie or `Authorization: Bearer` header.
+- Default admin password generated via `secrets.token_urlsafe(12)` if `MONITOR_DEFAULT_PASSWORD` is not set.
+
+### Archive Queries (`core/archive_query.py`)
+- Cross-database federation queries for archived monthly databases in `archives/`.
+- Validates archive file paths with regex and path traversal checks to prevent SQL injection and arbitrary file reads.
+- Provides `get_federated_stats_aggregates()`, `get_federated_incident_count()`, `get_federated_minute_stats()`, and `get_federated_alerts()` for querying both main and archived data.
 
 ### Device Cache (`core/device_cache.py`)
 - In-memory cache of all devices + their live status (`CachedDevice` dataclass).

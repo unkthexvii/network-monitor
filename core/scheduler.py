@@ -384,7 +384,7 @@ async def memory_cleanup():
 
 
 def start_scheduler():
-    from snmp_engine import poll_all_devices
+    from core.snmp_engine import poll_all_devices
     
     # Schedule the ping polling every 1 second
     scheduler.add_job(schedule_pings, 'interval', seconds=1, id='ping_poller')
