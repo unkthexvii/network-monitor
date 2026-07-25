@@ -485,7 +485,7 @@ async def _tracemalloc_snapshot():
         return {"error": str(e)}
 
 @app.api_route("/api/diag/cleanup", methods=["GET", "POST"])
-async def diag_cleanup():
+async def diag_cleanup(request: Request):
     """Trigger database cleanup/archiving manually. GET returns diagnostic info, POST executes."""
     from core.scheduler import cleanup_old_data
     import aiosqlite
