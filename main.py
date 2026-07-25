@@ -484,7 +484,7 @@ async def _tracemalloc_snapshot():
     except Exception as e:
         return {"error": str(e)}
 
-@app.post("/api/diag/cleanup")
+@app.api_route("/api/diag/cleanup", methods=["GET", "POST"])
 async def diag_cleanup():
     """Trigger database cleanup/archiving manually."""
     from core.scheduler import cleanup_old_data
@@ -494,7 +494,7 @@ async def diag_cleanup():
     except Exception as e:
         return {"status": "error", "message": str(e)}
 
-@app.post("/api/diag/vacuum")
+@app.api_route("/api/diag/vacuum", methods=["GET", "POST"])
 async def diag_vacuum():
     """Trigger database VACUUM manually."""
     from core.scheduler import vacuum_db
@@ -504,7 +504,7 @@ async def diag_vacuum():
     except Exception as e:
         return {"status": "error", "message": str(e)}
 
-@app.post("/api/diag/checkpoint")
+@app.api_route("/api/diag/checkpoint", methods=["GET", "POST"])
 async def diag_checkpoint():
     """Trigger WAL checkpoint manually."""
     from core.scheduler import run_wal_checkpoint
