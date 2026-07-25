@@ -3,7 +3,7 @@ import asyncio
 from sqlalchemy import event
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from .models import Base
-from core.config import DATABASE_URL
+from core.config import DATABASE_URL, DB_POOL_SIZE
 import logging
 
 logger = logging.getLogger(__name__)
@@ -11,8 +11,8 @@ logger = logging.getLogger(__name__)
 engine = create_async_engine(
     DATABASE_URL,
     echo=False,
-    pool_size=1,
-    max_overflow=0,
+    pool_size=DB_POOL_SIZE,
+    max_overflow=max(1, DB_POOL_SIZE // 3),
     connect_args={"check_same_thread": False}
 )
 

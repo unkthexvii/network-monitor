@@ -22,6 +22,7 @@ EVENT_HISTORY_RETENTION_DAYS = int(os.getenv("MONITOR_EVENT_RETENTION_DAYS", "90
 
 # === Database ===
 DATABASE_URL = os.getenv("MONITOR_DATABASE_URL", "sqlite+aiosqlite:///monitor.db")
+DB_POOL_SIZE = int(os.getenv("MONITOR_DB_POOL_SIZE", "3"))
 
 # === Dashboard Cache ===
 CACHE_TTL_SECONDS = int(os.getenv("MONITOR_CACHE_TTL", "60"))

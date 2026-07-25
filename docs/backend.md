@@ -28,7 +28,7 @@ To prevent database locking and increase write throughput for rapid polling, the
 - **Memory Temp Storage & Cache Tuning:** Caches temporary indexes in RAM (`PRAGMA temp_store=MEMORY`) and maps up to 256MB of memory for fast reads (`PRAGMA mmap_size=268435456`). Cache size is set to 20MB (`PRAGMA cache_size=-20000`). WAL file growth is capped at 64 MB per connection (`PRAGMA journal_size_limit=67108864`). WAL size is **per-connection**; a global cap is not possible with SQLite's connection-level PRAGMAs.
 - **Foreign Keys ON:** Ensures referential integrity.
 - **Busy Timeout:** 5-second wait before failing on locked DB.
-- **Pool Size:** Limited to 1 connection (`pool_size=1, max_overflow=0`) to prevent SQLite write lock contention from concurrent sessions.
+- **Pool Size:** `pool_size=3, max_overflow=1` (configurable via `MONITOR_DB_POOL_SIZE` env var). WAL mode allows concurrent reads, so a small pool prevents connection starvation while keeping write contention minimal.
 
 ### Dynamic Auto-Migration
 The system checks schema integrity during database initialization. It uses `PRAGMA table_info` to inspect existing columns and dynamically applies `ALTER TABLE ADD COLUMN` statements. This prevents schema drift when upgrading without corrupting user configuration. Covers `created_at`, `updated_at`, `recovery_count`, and all SNMP fields.

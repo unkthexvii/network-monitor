@@ -112,6 +112,7 @@ All settings are in `core/config.py`. Override via environment variables:
 | `MONITOR_STAT_RETENTION_DAYS` | `7` | Minute stats retention (days) |
 | `MONITOR_EVENT_RETENTION_DAYS` | `90` | Alert history retention (days) |
 | `MONITOR_DATABASE_URL` | `sqlite+aiosqlite:///monitor.db` | Database path |
+| `MONITOR_DB_POOL_SIZE` | `3` | Connection pool size (SQLite WAL allows concurrent reads) |
 | `MONITOR_CACHE_TTL` | `60` | Dashboard/report cache TTL (seconds) |
 | `MONITOR_READONLY` | `false` | Global read-only mode (disables all mutations) |
 | `MONITOR_DEFAULT_PASSWORD` | *(random)* | Initial admin password override |
