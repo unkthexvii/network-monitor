@@ -387,7 +387,7 @@ async def diag_health():
         "db_size_mb": round(db_size / 1024 / 1024, 1),
         "wal_size_mb": round(wal_size / 1024 / 1024, 1),
         "sse_clients": len(_clients),
-        "ping_buffer_devices": len(ping_buffer._buffer),
+        "ping_buffer_devices": len(ping_buffer._data),
         "gc_objects": len(gc.get_objects()),
     }
 
