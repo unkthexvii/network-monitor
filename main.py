@@ -232,6 +232,7 @@ _PUBLIC_GET_PATHS = frozenset({
     "/api/diag/health",
     "/api/diag/memory",
     "/api/diag/tracemalloc",
+    "/api/diag/dbstats",
     "/api/dashboard/stats",
     "/api/dashboard/events",
     "/api/alerts",
@@ -388,7 +389,31 @@ async def diag_health():
     wal_path = db_path + "-wal"
     wal_size = os.path.getsize(wal_path) if os.path.exists(wal_path) else 0
 
-    # Table row counts
+    return {
+        "uptime_seconds": time.monotonic(),
+        "rss_mb": round(mem.rss / 1024 / 1024, 1),
+        "vms_mb": round(mem.vms / 1024 / 1024, 1),
+        "db_size_mb": round(db_size / 1024 / 1024, 1),
+        "wal_size_mb": round(wal_size / 1024 / 1024, 1),
+        "sse_clients": len(_clients),
+        "ping_buffer_devices": len(ping_buffer._data),
+        "gc_objects": len(gc.get_objects()),
+    }
+
+
+@app.get("/api/diag/dbstats")
+async def diag_dbstats():
+    """Database row counts — may be slow on large tables."""
+    import time
+    db_path = DATABASE_URL.replace("sqlite+aiosqlite:///", "")
+    if not db_path:
+        db_path = "monitor.db"
+    if not os.path.exists(db_path):
+        alt_path = os.path.join(APP_DIR, db_path)
+        if os.path.exists(alt_path):
+            db_path = alt_path
+
+    t0 = time.time()
     table_counts = {}
     try:
         import aiosqlite
@@ -401,14 +426,7 @@ async def diag_health():
         table_counts = {"error": str(e)}
 
     return {
-        "uptime_seconds": time.monotonic(),
-        "rss_mb": round(mem.rss / 1024 / 1024, 1),
-        "vms_mb": round(mem.vms / 1024 / 1024, 1),
-        "db_size_mb": round(db_size / 1024 / 1024, 1),
-        "wal_size_mb": round(wal_size / 1024 / 1024, 1),
-        "sse_clients": len(_clients),
-        "ping_buffer_devices": len(ping_buffer._data),
-        "gc_objects": len(gc.get_objects()),
+        "elapsed_seconds": round(time.time() - t0, 2),
         "table_rows": table_counts,
     }
 
