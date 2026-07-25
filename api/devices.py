@@ -470,7 +470,7 @@ async def discover_lan(req: DiscoverRequest, background_tasks: BackgroundTasks):
 @router.get("/api/test/snmp/{device_id}")
 async def test_snmp_device(device_id: int, session: AsyncSession = Depends(get_db)):
     """Manually trigger an SNMP poll for a single device and return the raw result."""
-    from snmp_engine import fetch_snmp_data
+    from core.snmp_engine import fetch_snmp_data
 
     # Fetch device from main DB
     stmt = select(Device).where(Device.id == device_id)
