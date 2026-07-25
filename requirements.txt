@@ -11,3 +11,4 @@ pyinstaller==5.13.2
 cryptography==38.0.4
 pysnmp-lextudio==5.0.28
 setuptools==68.2.2
+psutil>=5.8.0,<8.0.0
