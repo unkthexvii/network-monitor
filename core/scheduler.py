@@ -203,8 +203,9 @@ async def cleanup_sessions():
 
 
 async def cleanup_old_data():
-    """Delete old records past retention window. Returns dict with summary."""
+    """Archive old records into monthly DBs, then delete from main. Returns dict with summary."""
     import os
+    import calendar
     import aiosqlite
     from core.config import DATABASE_URL, MINUTE_STAT_RETENTION_DAYS, EVENT_HISTORY_RETENTION_DAYS
 
@@ -219,6 +220,9 @@ async def cleanup_old_data():
         if os.path.exists(alt_path):
             db_path = alt_path
 
+    archive_dir = os.path.join(os.getcwd(), "archives")
+    os.makedirs(archive_dir, exist_ok=True)
+
     now = datetime.now(timezone.utc).replace(tzinfo=None)
     cutoff_minute = now - timedelta(days=MINUTE_STAT_RETENTION_DAYS)
     cutoff_event = now - timedelta(days=EVENT_HISTORY_RETENTION_DAYS)
@@ -231,13 +235,53 @@ async def cleanup_old_data():
         ]:
             cutoff_s = cutoff.strftime("%Y-%m-%d %H:%M:%S")
             async with db.execute(f"SELECT COUNT(*) FROM {table} WHERE {col} < ?", (cutoff_s,)) as c:
-                before = (await c.fetchone())[0]
-            if before:
-                await db.execute(f"DELETE FROM {table} WHERE {col} < ?", (cutoff_s,))
-                await db.commit()
+                total_before = (await c.fetchone())[0]
+
+            if not total_before:
+                async with db.execute(f"SELECT COUNT(*) FROM {table}") as c:
+                    after = (await c.fetchone())[0]
+                result[table] = {"deleted": 0, "remaining": after, "archived_months": []}
+                continue
+
+            # Get distinct months that have old data
+            async with db.execute(
+                f"SELECT DISTINCT strftime('%Y-%m', {col}) FROM {table} WHERE {col} < ? ORDER BY 1", (cutoff_s,)
+            ) as c:
+                months = [row[0] for row in await c.fetchall()]
+
+            archived_months = []
+            for ym in months:
+                year, month = map(int, ym.split('-'))
+                _, last_day = calendar.monthrange(year, month)
+                month_start = f"{year}-{month:02d}-01 00:00:00"
+                month_end = f"{year}-{month:02d}-{last_day} 23:59:59"
+
+                archive_path = os.path.join(archive_dir, f"archive_{ym}.db")
+                archive_path_sql = archive_path.replace("'", "''")
+
+                # Copy to archive
+                await db.execute(f"ATTACH DATABASE '{archive_path_sql}' AS archive")
+                await db.execute(
+                    f"CREATE TABLE IF NOT EXISTS archive.{table} AS SELECT * FROM main.{table} WHERE 0"
+                )
+                await db.execute(
+                    f"INSERT INTO archive.{table} SELECT * FROM main.{table} WHERE {col} >= ? AND {col} <= ?",
+                    (month_start, month_end)
+                )
+                await db.execute(f"DETACH DATABASE archive")
+                archived_months.append(ym)
+
+            # Delete all old rows from main
+            await db.execute(f"DELETE FROM {table} WHERE {col} < ?", (cutoff_s,))
+            await db.commit()
+
             async with db.execute(f"SELECT COUNT(*) FROM {table}") as c:
                 after = (await c.fetchone())[0]
-            result[table] = {"deleted": before, "remaining": after}
+            result[table] = {
+                "deleted": total_before,
+                "remaining": after,
+                "archived_months": archived_months,
+            }
 
     return result
 
