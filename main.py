@@ -97,12 +97,16 @@ from api.topology import router as topology_router
 from api.alerts import router as alerts_router
 from api.reports import router as reports_router
 from api.stream import router as stream_router, sse_publisher
-from core.config import READONLY, DEFAULT_ADMIN_PASSWORD, get_readonly_from_db, set_readonly_in_db
+from core.config import READONLY, DEFAULT_ADMIN_PASSWORD, DATABASE_URL, get_readonly_from_db, set_readonly_in_db
 from api.auth import router as auth_router
 from core.auth import session_store, hash_password, get_token_from_request
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Start tracemalloc for memory diagnostics
+    import tracemalloc
+    tracemalloc.start()
+    
     # Startup
     logger.info("Initializing Database...")
     await init_db()
@@ -235,6 +239,9 @@ async def auth_guard(request, call_next):
         "/api/devices/names",
         "/api/devices/paginated",
         "/api/devices/subnets",
+        "/api/diag/health",
+        "/api/diag/memory",
+        "/api/diag/tracemalloc",
         "/api/dashboard/stats",
         "/api/dashboard/events",
         "/api/alerts",
@@ -355,7 +362,88 @@ async def get_favicon():
                 return FileResponse(files[0], media_type="image/x-icon")
     raise HTTPException(status_code=404, detail="No favicon found")
 
-# Mount static files
+# Diagnostic endpoints
+import psutil
+import gc
+
+@app.get("/api/diag/health")
+async def diag_health():
+    """Lightweight health info — uptime, memory, DB size, SSE clients, ping buffer."""
+    import time
+    from core.ping_buffer import ping_buffer
+    from api.stream import _clients
+
+    proc = psutil.Process()
+    mem = proc.memory_info()
+    db_path = DATABASE_URL.replace("sqlite+aiosqlite:///", "monitor.db")
+    db_size = os.path.getsize(db_path) if os.path.exists(db_path) else 0
+    wal_path = db_path + "-wal"
+    wal_size = os.path.getsize(wal_path) if os.path.exists(wal_path) else 0
+
+    return {
+        "uptime_seconds": time.monotonic(),
+        "rss_mb": round(mem.rss / 1024 / 1024, 1),
+        "vms_mb": round(mem.vms / 1024 / 1024, 1),
+        "db_size_mb": round(db_size / 1024 / 1024, 1),
+        "wal_size_mb": round(wal_size / 1024 / 1024, 1),
+        "sse_clients": len(_clients),
+        "ping_buffer_devices": len(ping_buffer._buffer),
+        "gc_objects": len(gc.get_objects()),
+    }
+
+@app.get("/api/diag/memory")
+async def diag_memory():
+    """Detailed memory snapshot — top object types by count and size."""
+    import tracemalloc
+    proc = psutil.Process()
+    mem = proc.memory_info()
+
+    # Top object types by count
+    obj_counts = {}
+    for obj in gc.get_objects():
+        t = type(obj).__name__
+        obj_counts[t] = obj_counts.get(t, 0) + 1
+    top_types = sorted(obj_counts.items(), key=lambda x: -x[1])[:20]
+
+    # GC stats
+    gc_stats = gc.get_stats()
+
+    return {
+        "rss_mb": round(mem.rss / 1024 / 1024, 1),
+        "vms_mb": round(mem.vms / 1024 / 1024, 1),
+        "cpu_percent": proc.cpu_percent(interval=0),
+        "num_fds": proc.num_handles() if hasattr(proc, 'num_handles') else 0,
+        "gc_collected_total": sum(s["collected"] for s in gc_stats),
+        "gc_uncollectable_total": sum(s["uncollectable_total"] for s in gc_stats),
+        "top_object_types": [{"type": t, "count": c} for t, c in top_types],
+        "tracemalloc_snapshot": await _tracemalloc_snapshot(),
+    }
+
+@app.get("/api/diag/tracemalloc")
+async def diag_tracemalloc(reset: bool = False):
+    """Top allocations by file:line. Pass ?reset=true to reset the baseline."""
+    import tracemalloc
+    if reset:
+        tracemalloc.clear_traces()
+        return {"message": "Traces cleared", "reset": True}
+
+    return await _tracemalloc_snapshot()
+
+async def _tracemalloc_snapshot():
+    import tracemalloc
+    try:
+        snapshot = tracemalloc.take_snapshot()
+        top = snapshot.statistics('lineno')[:20]
+        return [
+            {
+                "file": f"{s.traceback[0].filename}:{s.traceback[0].lineno}",
+                "size_kb": round(s.size / 1024, 1),
+                "count": s.count,
+            }
+            for s in top
+        ]
+    except Exception as e:
+        return {"error": str(e)}
 app.mount("/", StaticFiles(directory=STATIC_DIR, html=True), name="static")
 
 import subprocess
