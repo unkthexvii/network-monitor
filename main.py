@@ -421,7 +421,7 @@ async def diag_memory():
         "cpu_percent": proc.cpu_percent(interval=0),
         "num_fds": proc.num_handles() if hasattr(proc, 'num_handles') else 0,
         "gc_collected_total": sum(s["collected"] for s in gc_stats),
-        "gc_uncollectable_total": sum(s["uncollectable_total"] for s in gc_stats),
+        "gc_uncollectable_total": sum(s["uncollectable"] for s in gc_stats),
         "top_object_types": [{"type": t, "count": c} for t, c in top_types],
         "tracemalloc_snapshot": await _tracemalloc_snapshot(),
     }
