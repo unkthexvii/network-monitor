@@ -375,7 +375,14 @@ async def diag_health():
 
     proc = psutil.Process()
     mem = proc.memory_info()
-    db_path = DATABASE_URL.replace("sqlite+aiosqlite:///", "monitor.db")
+    db_path = DATABASE_URL.replace("sqlite+aiosqlite:///", "")
+    if not db_path:
+        db_path = "monitor.db"
+    # Also check for the db in the app directory
+    if not os.path.exists(db_path):
+        alt_path = os.path.join(APP_DIR, db_path)
+        if os.path.exists(alt_path):
+            db_path = alt_path
     db_size = os.path.getsize(db_path) if os.path.exists(db_path) else 0
     wal_path = db_path + "-wal"
     wal_size = os.path.getsize(wal_path) if os.path.exists(wal_path) else 0
