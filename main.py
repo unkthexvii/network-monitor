@@ -486,13 +486,51 @@ async def _tracemalloc_snapshot():
 
 @app.api_route("/api/diag/cleanup", methods=["GET", "POST"])
 async def diag_cleanup():
-    """Trigger database cleanup/archiving manually."""
+    """Trigger database cleanup/archiving manually. GET returns diagnostic info, POST executes."""
     from core.scheduler import cleanup_old_data
-    try:
-        await cleanup_old_data()
-        return {"status": "ok", "message": "Cleanup completed"}
-    except Exception as e:
-        return {"status": "error", "message": str(e)}
+    import aiosqlite
+
+    db_path = DATABASE_URL.replace("sqlite+aiosqlite:///", "")
+    if not db_path:
+        db_path = "monitor.db"
+    if not os.path.exists(db_path):
+        alt_path = os.path.join(APP_DIR, db_path)
+        if os.path.exists(alt_path):
+            db_path = alt_path
+
+    # Diagnostic: check what cleanup would find
+    diag = {"db_path": db_path, "exists": os.path.exists(db_path)}
+    if os.path.exists(db_path):
+        async with aiosqlite.connect(db_path) as db:
+            async with db.execute("SELECT COUNT(*) FROM minute_stats") as c:
+                diag["total_rows"] = (await c.fetchone())[0]
+            async with db.execute("SELECT MIN(minute), MAX(minute) FROM minute_stats") as c:
+                row = await c.fetchone()
+                diag["min_minute"] = str(row[0]) if row else None
+                diag["max_minute"] = str(row[1]) if row else None
+
+            from core.config import MINUTE_STAT_RETENTION_DAYS
+            from datetime import datetime, timezone, timedelta
+            cutoff = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=MINUTE_STAT_RETENTION_DAYS)
+            cutoff_str = cutoff.strftime("%Y-%m-%d %H:%M:%S")
+            diag["cutoff"] = cutoff_str
+
+            async with db.execute("SELECT MIN(strftime('%Y-%m', minute)) FROM minute_stats WHERE minute < ?", (cutoff_str,)) as c:
+                row = await c.fetchone()
+                diag["oldest_month_before_cutoff"] = str(row[0]) if row else None
+
+            async with db.execute("SELECT COUNT(*) FROM minute_stats WHERE minute < ?", (cutoff_str,)) as c:
+                diag["rows_before_cutoff"] = (await c.fetchone())[0]
+
+    if request.method == "POST":
+        try:
+            await cleanup_old_data()
+            diag["cleanup"] = "completed"
+        except Exception as e:
+            diag["cleanup"] = f"error: {e}"
+        return diag
+
+    return diag
 
 @app.api_route("/api/diag/vacuum", methods=["GET", "POST"])
 async def diag_vacuum():
