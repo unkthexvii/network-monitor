@@ -203,95 +203,43 @@ async def cleanup_sessions():
 
 
 async def cleanup_old_data():
-    """Archive old records into monthly databases before deleting to prevent unbounded database growth."""
-    import calendar
+    """Delete old records past retention window. Returns dict with summary."""
     import os
     import aiosqlite
     from core.config import DATABASE_URL, MINUTE_STAT_RETENTION_DAYS, EVENT_HISTORY_RETENTION_DAYS
 
-    # Whitelist of allowed table/column names — must match the hardcoded values below.
-    # These are interpolated into SQL via f-strings, so they MUST stay in this list.
-    _ALLOWED_TABLES = {"minute_stats", "alerts"}
-    _ALLOWED_COLS = {"ts", "minute", "created_at"}
-
-    def _validate_ident(name: str, allowed: set) -> str:
-        if name not in allowed:
-            raise ValueError(f"Identifier not in whitelist: {name!r}")
-        return name
-
-    archive_dir = os.path.join(os.getcwd(), "archives")
-    os.makedirs(archive_dir, exist_ok=True)
-    
     db_path = DATABASE_URL.replace("sqlite+aiosqlite:///", "")
     if not db_path:
         db_path = "monitor.db"
     if not os.path.exists(db_path):
-        # Frozen exe fallback — look next to the executable
         if getattr(sys, 'frozen', False):
             alt_path = os.path.join(os.path.dirname(sys.executable), db_path)
         else:
             alt_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", db_path)
         if os.path.exists(alt_path):
             db_path = alt_path
-        
-    try:
-        now = datetime.now(timezone.utc).replace(tzinfo=None)
-        
-        tables_to_archive = [
-            ("minute_stats", now - timedelta(days=MINUTE_STAT_RETENTION_DAYS), "minute"),
-            ("alerts", now - timedelta(days=EVENT_HISTORY_RETENTION_DAYS), "created_at")
-        ]
-        
-        async with aiosqlite.connect(db_path) as db:
-            for table_name, cutoff, time_col in tables_to_archive:
-                _validate_ident(table_name, _ALLOWED_TABLES)
-                _validate_ident(time_col, _ALLOWED_COLS)
-                async with db.execute(f"SELECT count(*) FROM sqlite_master WHERE type='table' AND name=?", (table_name,)) as cursor:
-                    if (await cursor.fetchone())[0] == 0:
-                        continue
-                    
-                cutoff_str = cutoff.strftime("%Y-%m-%d %H:%M:%S")
-                
-                while True:
-                    async with db.execute(f"SELECT MIN(strftime('%Y-%m', {time_col})) FROM {table_name} WHERE {time_col} < ?", (cutoff_str,)) as cursor:
-                        year_month = (await cursor.fetchone())[0]
-                    
-                    if not year_month:
-                        break
-                        
-                    year, month = map(int, year_month.split('-'))
-                    _, last_day = calendar.monthrange(year, month)
-                    
-                    month_start_str = f"{year}-{month:02d}-01 00:00:00"
-                    
-                    month_end = datetime(year, month, last_day, 23, 59, 59, 999999)
-                    effective_end = min(month_end, cutoff)
-                    effective_end_str = effective_end.strftime("%Y-%m-%d %H:%M:%S")
-                    
-                    archive_db_path = os.path.join(archive_dir, f"archive_{year}_{month:02d}.db")
-                    archive_db_path_sql = archive_db_path.replace("'", "''")
-                    
-                    await db.execute(f"ATTACH DATABASE '{archive_db_path_sql}' AS archive")
-                    
-                    await db.execute(f"CREATE TABLE IF NOT EXISTS archive.{table_name} AS SELECT * FROM main.{table_name} WHERE 0")
-                    
-                    await db.execute(
-                        f"INSERT INTO archive.{table_name} SELECT * FROM main.{table_name} WHERE {time_col} >= ? AND {time_col} <= ?",
-                        (month_start_str, effective_end_str)
-                    )
-                    
-                    await db.execute(
-                        f"DELETE FROM main.{table_name} WHERE {time_col} >= ? AND {time_col} <= ?",
-                        (month_start_str, effective_end_str)
-                    )
-                    
-                    await db.commit()
-                    await db.execute("DETACH DATABASE archive")
-                    
-                    logger.info(f"Archived {table_name} for {year}-{month:02d}")
-                    
-    except Exception as e:
-        logger.error(f"Database archiving failed: {e}", exc_info=True)
+
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    cutoff_minute = now - timedelta(days=MINUTE_STAT_RETENTION_DAYS)
+    cutoff_event = now - timedelta(days=EVENT_HISTORY_RETENTION_DAYS)
+
+    result = {}
+    async with aiosqlite.connect(db_path) as db:
+        for table, cutoff, col in [
+            ("minute_stats", cutoff_minute, "minute"),
+            ("alerts", cutoff_event, "created_at"),
+        ]:
+            cutoff_s = cutoff.strftime("%Y-%m-%d %H:%M:%S")
+            async with db.execute(f"SELECT COUNT(*) FROM {table} WHERE {col} < ?", (cutoff_s,)) as c:
+                before = (await c.fetchone())[0]
+            if before:
+                await db.execute(f"DELETE FROM {table} WHERE {col} < ?", (cutoff_s,))
+                await db.commit()
+            async with db.execute(f"SELECT COUNT(*) FROM {table}") as c:
+                after = (await c.fetchone())[0]
+            result[table] = {"deleted": before, "remaining": after}
+
+    return result
 
 
 async def run_wal_checkpoint():

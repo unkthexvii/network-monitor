@@ -524,10 +524,13 @@ async def diag_cleanup(request: Request):
 
     if request.method == "POST":
         try:
-            await cleanup_old_data()
+            result = await cleanup_old_data()
+            diag["cleanup_result"] = result
             diag["cleanup"] = "completed"
         except Exception as e:
             diag["cleanup"] = f"error: {e}"
+            import traceback
+            diag["traceback"] = traceback.format_exc()
         return diag
 
     return diag
