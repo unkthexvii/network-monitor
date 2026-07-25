@@ -264,7 +264,7 @@ async def cleanup_old_data():
                     
                     month_start_str = f"{year}-{month:02d}-01 00:00:00"
                     
-                    month_end = datetime(year, month, last_day, 23, 59, 59, 999999, tzinfo=timezone.utc)
+                    month_end = datetime(year, month, last_day, 23, 59, 59, 999999)
                     effective_end = min(month_end, cutoff)
                     effective_end_str = effective_end.strftime("%Y-%m-%d %H:%M:%S")
                     
