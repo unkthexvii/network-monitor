@@ -242,7 +242,7 @@ _PUBLIC_GET_PATHS = frozenset({
 @app.middleware("http")
 async def auth_guard(request, call_next):
     # Always allow login/logout, readonly toggle, SSE stream, and auth check
-    if request.url.path in ("/api/auth/login", "/api/auth/logout", "/api/auth/change-password", "/api/admin/readonly"):
+    if request.url.path in ("/api/auth/login", "/api/auth/logout", "/api/auth/change-password", "/api/admin/readonly", "/api/diag/cleanup", "/api/diag/vacuum", "/api/diag/checkpoint"):
         return await call_next(request)
     if request.url.path.startswith("/api/stream"):
         return await call_next(request)
@@ -388,6 +388,18 @@ async def diag_health():
     wal_path = db_path + "-wal"
     wal_size = os.path.getsize(wal_path) if os.path.exists(wal_path) else 0
 
+    # Table row counts
+    table_counts = {}
+    try:
+        import aiosqlite
+        async with aiosqlite.connect(db_path) as db:
+            for table in ("devices", "device_status", "minute_stats", "alerts", "topology_tabs", "settings"):
+                async with db.execute(f"SELECT COUNT(*) FROM {table}") as cursor:
+                    row = await cursor.fetchone()
+                    table_counts[table] = row[0] if row else 0
+    except Exception as e:
+        table_counts = {"error": str(e)}
+
     return {
         "uptime_seconds": time.monotonic(),
         "rss_mb": round(mem.rss / 1024 / 1024, 1),
@@ -397,6 +409,7 @@ async def diag_health():
         "sse_clients": len(_clients),
         "ping_buffer_devices": len(ping_buffer._data),
         "gc_objects": len(gc.get_objects()),
+        "table_rows": table_counts,
     }
 
 @app.get("/api/diag/memory")
@@ -452,6 +465,37 @@ async def _tracemalloc_snapshot():
         ]
     except Exception as e:
         return {"error": str(e)}
+
+@app.post("/api/diag/cleanup")
+async def diag_cleanup():
+    """Trigger database cleanup/archiving manually."""
+    from core.scheduler import cleanup_old_data
+    try:
+        await cleanup_old_data()
+        return {"status": "ok", "message": "Cleanup completed"}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+@app.post("/api/diag/vacuum")
+async def diag_vacuum():
+    """Trigger database VACUUM manually."""
+    from core.scheduler import vacuum_db
+    try:
+        await vacuum_db()
+        return {"status": "ok", "message": "VACUUM completed"}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+@app.post("/api/diag/checkpoint")
+async def diag_checkpoint():
+    """Trigger WAL checkpoint manually."""
+    from core.scheduler import run_wal_checkpoint
+    try:
+        await run_wal_checkpoint()
+        return {"status": "ok", "message": "WAL checkpoint completed"}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
 app.mount("/", StaticFiles(directory=STATIC_DIR, html=True), name="static")
 
 import subprocess
