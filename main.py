@@ -220,6 +220,25 @@ async def log_requests(request, call_next):
     return response
 
 
+# Public read-only GET endpoints — accessible without authentication
+_PUBLIC_GET_PATHS = frozenset({
+    "/api/readonly",
+    "/api/logo",
+    "/favicon.ico",
+    "/api/devices",
+    "/api/devices/names",
+    "/api/devices/paginated",
+    "/api/devices/subnets",
+    "/api/diag/health",
+    "/api/diag/memory",
+    "/api/diag/tracemalloc",
+    "/api/dashboard/stats",
+    "/api/dashboard/events",
+    "/api/alerts",
+    "/api/topology",
+    "/api/reports/ui_data",
+})
+
 @app.middleware("http")
 async def auth_guard(request, call_next):
     # Always allow login/logout, readonly toggle, SSE stream, and auth check
@@ -230,24 +249,6 @@ async def auth_guard(request, call_next):
     if request.url.path == "/api/auth/check":
         return await call_next(request)
 
-    # Public read-only endpoints — accessible without auth
-    _PUBLIC_GET_PATHS = {
-        "/api/readonly",
-        "/api/logo",
-        "/favicon.ico",
-        "/api/devices",
-        "/api/devices/names",
-        "/api/devices/paginated",
-        "/api/devices/subnets",
-        "/api/diag/health",
-        "/api/diag/memory",
-        "/api/diag/tracemalloc",
-        "/api/dashboard/stats",
-        "/api/dashboard/events",
-        "/api/alerts",
-        "/api/topology",
-        "/api/reports/ui_data",
-    }
     if request.method in ("GET", "HEAD", "OPTIONS") and request.url.path in _PUBLIC_GET_PATHS:
         return await call_next(request)
 
