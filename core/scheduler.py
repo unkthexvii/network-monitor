@@ -1,6 +1,7 @@
 from __future__ import annotations
 import asyncio
 import logging
+import sys
 from datetime import datetime, timezone, timedelta
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from sqlalchemy import select
@@ -224,6 +225,14 @@ async def cleanup_old_data():
     db_path = DATABASE_URL.replace("sqlite+aiosqlite:///", "")
     if not db_path:
         db_path = "monitor.db"
+    if not os.path.exists(db_path):
+        # Frozen exe fallback — look next to the executable
+        if getattr(sys, 'frozen', False):
+            alt_path = os.path.join(os.path.dirname(sys.executable), db_path)
+        else:
+            alt_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", db_path)
+        if os.path.exists(alt_path):
+            db_path = alt_path
         
     try:
         now = datetime.now(timezone.utc).replace(tzinfo=None)
