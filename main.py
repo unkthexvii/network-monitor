@@ -594,7 +594,8 @@ async def diag_checkpoint(request: Request):
                 diag["checkpoint_frames"] = row[1] if row else 0
             async with db.execute("PRAGMA journal_size_limit") as c:
                 row = await c.fetchone()
-                diag["journal_size_limit_mb"] = round(row[0] / 1024 / 1024, 1) if row and row[0] else None
+                val = row[0] if row else 0
+                diag["journal_size_limit_mb"] = round(val / 1024 / 1024, 1) if val and val > 0 else "per-connection"
             async with db.execute("PRAGMA page_count") as c:
                 diag["page_count"] = (await c.fetchone())[0]
 
