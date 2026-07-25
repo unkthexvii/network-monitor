@@ -533,24 +533,81 @@ async def diag_cleanup(request: Request):
     return diag
 
 @app.api_route("/api/diag/vacuum", methods=["GET", "POST"])
-async def diag_vacuum():
-    """Trigger database VACUUM manually."""
+async def diag_vacuum(request: Request):
+    """Database VACUUM info on GET, execute VACUUM on POST."""
+    import aiosqlite
     from core.scheduler import vacuum_db
-    try:
-        await vacuum_db()
-        return {"status": "ok", "message": "VACUUM completed"}
-    except Exception as e:
-        return {"status": "error", "message": str(e)}
+
+    db_path = DATABASE_URL.replace("sqlite+aiosqlite:///", "")
+    if not db_path:
+        db_path = "monitor.db"
+    if not os.path.exists(db_path):
+        alt_path = os.path.join(APP_DIR, db_path)
+        if os.path.exists(alt_path):
+            db_path = alt_path
+
+    diag = {"db_path": db_path, "exists": os.path.exists(db_path)}
+    if os.path.exists(db_path):
+        async with aiosqlite.connect(db_path) as db:
+            async with db.execute("PRAGMA page_count") as c:
+                diag["page_count"] = (await c.fetchone())[0]
+            async with db.execute("PRAGMA page_size") as c:
+                diag["page_size"] = (await c.fetchone())[0]
+            async with db.execute("PRAGMA freelist_count") as c:
+                diag["freelist_pages"] = (await c.fetchone())[0]
+        diag["wasted_mb"] = round(diag["freelist_pages"] * diag["page_size"] / 1024 / 1024, 1)
+
+    if request.method == "POST":
+        try:
+            await vacuum_db()
+            diag["vacuum"] = "completed"
+        except Exception as e:
+            diag["vacuum"] = f"error: {e}"
+        return diag
+
+    return {k: v for k, v in diag.items() if k != "vacuum"}
+
 
 @app.api_route("/api/diag/checkpoint", methods=["GET", "POST"])
-async def diag_checkpoint():
-    """Trigger WAL checkpoint manually."""
+async def diag_checkpoint(request: Request):
+    """WAL checkpoint info on GET, execute checkpoint on POST."""
+    import aiosqlite
     from core.scheduler import run_wal_checkpoint
-    try:
-        await run_wal_checkpoint()
-        return {"status": "ok", "message": "WAL checkpoint completed"}
-    except Exception as e:
-        return {"status": "error", "message": str(e)}
+
+    db_path = DATABASE_URL.replace("sqlite+aiosqlite:///", "")
+    if not db_path:
+        db_path = "monitor.db"
+    if not os.path.exists(db_path):
+        alt_path = os.path.join(APP_DIR, db_path)
+        if os.path.exists(alt_path):
+            db_path = alt_path
+
+    diag = {"db_path": db_path, "exists": os.path.exists(db_path)}
+    if os.path.exists(db_path):
+        async with aiosqlite.connect(db_path) as db:
+            async with db.execute("PRAGMA wal_checkpoint(TRACE)") as c:
+                row = await c.fetchone()
+                diag["checkpoint_result"] = {0: "ok", 1: "checkpoint", 2: "truncated"}.get(row[0], str(row[0])) if row else None
+                diag["checkpoint_frames"] = row[1] if row else 0
+            async with db.execute("PRAGMA wal_size_limit") as c:
+                diag["wal_size_limit_mb"] = round((await c.fetchone())[0] / 1024 / 1024, 1) if (await c.fetchone()) else None
+            async with db.execute("PRAGMA page_count") as c:
+                diag["page_count"] = (await c.fetchone())[0]
+
+    if request.method == "POST":
+        try:
+            await run_wal_checkpoint()
+            # Re-check WAL size after checkpoint
+            wal_path = db_path + "-wal"
+            diag["wal_size_mb_after"] = round(os.path.getsize(wal_path) / 1024 / 1024, 1) if os.path.exists(wal_path) else 0
+            diag["checkpoint"] = "completed"
+        except Exception as e:
+            diag["checkpoint"] = f"error: {e}"
+        return diag
+
+    wal_path = db_path + "-wal"
+    diag["wal_size_mb"] = round(os.path.getsize(wal_path) / 1024 / 1024, 1) if os.path.exists(wal_path) else 0
+    return diag
 
 app.mount("/", StaticFiles(directory=STATIC_DIR, html=True), name="static")
 
