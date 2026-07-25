@@ -11,6 +11,8 @@ logger = logging.getLogger(__name__)
 engine = create_async_engine(
     DATABASE_URL,
     echo=False,
+    pool_size=1,
+    max_overflow=0,
     connect_args={"check_same_thread": False}
 )
 
