@@ -9,6 +9,8 @@ from core.config import DATABASE_URL
 logger = logging.getLogger(__name__)
 
 def parse_db_date(date_str: str) -> datetime:
+    # Strip Z suffix (Python 3.8 fromisoformat() doesn't support it)
+    date_str = date_str.replace('Z', '+00:00')
     if 'T' in date_str:
         return datetime.fromisoformat(date_str).replace(tzinfo=None)
     if '.' in date_str:

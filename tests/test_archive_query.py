@@ -43,11 +43,11 @@ def test_parse_db_date_iso_with_negative_offset():
     assert dt == datetime(2026, 7, 21, 7, 0, 0)
 
 
-def test_parse_db_date_z_suffix_raises():
-    """Python 3.8 fromisoformat() does not support the Z suffix.
-    Verify that parse_db_date raises ValueError for this format."""
-    with pytest.raises((ValueError, TypeError)):
-        parse_db_date("2026-07-21T12:00:00Z")
+def test_parse_db_date_z_suffix():
+    """Z suffix (UTC indicator) is normalized to +00:00 for Python 3.8 compat."""
+    dt = parse_db_date("2026-07-21T12:00:00Z")
+    assert dt.tzinfo is None
+    assert dt == datetime(2026, 7, 21, 12, 0, 0)
 
 
 def test_parse_db_date_fractional_seconds_millis():
