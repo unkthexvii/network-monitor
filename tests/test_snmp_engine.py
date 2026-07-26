@@ -172,11 +172,11 @@ class _TypedVal:
 
 def _make_sys_varbinds(**overrides):
     defaults = {
-        "SNMPv2-MIB::sysName.0": "TestDevice",
-        "SNMPv2-MIB::sysDescr.0": "TestOS 1.0",
-        "SNMPv2-MIB::sysUpTime.0": "1234500",
-        "SNMPv2-MIB::sysContact.0": "admin@test.com",
-        "SNMPv2-MIB::sysLocation.0": "Building A",
+        "1.3.6.1.2.1.1.5.0": "TestDevice",
+        "1.3.6.1.2.1.1.1.0": "TestOS 1.0",
+        "1.3.6.1.2.1.1.3.0": "1234500",
+        "1.3.6.1.2.1.1.4.0": "admin@test.com",
+        "1.3.6.1.2.1.1.6.0": "Building A",
     }
     defaults.update(overrides)
     return [FakeVarBind(oid, val) for oid, val in defaults.items()]
