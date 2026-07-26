@@ -315,56 +315,25 @@ async def vacuum_db():
 
 
 async def purge_logs():
-    """Remove rotated log backups older than 24 hours and stale crash.log."""
-    LOG_CLEANUP_HOURS = 24
+    """Remove stale crash.log from working directory.
+
+    RotatingFileHandler manages its own rotation chain (app.log.1..5,
+    snmp_failures.log.1..3) — we must NOT interfere with its backup files.
+    Only crash.log is a one-shot dump that has no built-in rotation.
+    """
     import os
     import time as time_module
 
     try:
-        cutoff = time_module.time() - (LOG_CLEANUP_HOURS * 3600)
-        log_dir = os.path.join(os.getcwd(), "logs")
-        removed = 0
-        freed = 0
-
-        # Clean rotated log backups in logs/ dir (app.log.1, snmp_failures.log.2, etc.)
-        if os.path.isdir(log_dir):
-            with os.scandir(log_dir) as entries:
-                for entry in entries:
-                    if not entry.is_file():
-                        continue
-                    name = entry.name
-                    # Matches rotated backups: <name>.log.<N> where N is a number
-                    if ".log." in name:
-                        parts = name.split(".log.")
-                        if len(parts) == 2 and parts[1].isdigit():
-                            try:
-                                stat = entry.stat()
-                                if stat.st_mtime < cutoff:
-                                    sz = stat.st_size
-                                    os.remove(entry.path)
-                                    removed += 1
-                                    freed += sz
-                            except OSError:
-                                pass
-
-        # Clean crash.log from working directory
+        cutoff = time_module.time() - (72 * 3600)  # keep crash.log for 3 days
         crash_path = os.path.join(os.getcwd(), "crash.log")
         if os.path.isfile(crash_path):
             try:
-                stat = os.stat(crash_path)
-                if stat.st_mtime < cutoff:
-                    sz = stat.st_size
+                if os.stat(crash_path).st_mtime < cutoff:
                     os.remove(crash_path)
-                    removed += 1
-                    freed += sz
+                    logger.info("Log purge: removed stale crash.log")
             except OSError:
                 pass
-
-        if removed:
-            logger.info(f"Log purge: removed {removed} file(s), freed {freed / 1024:.1f} KB")
-        else:
-            logger.debug("Log purge: no stale files found")
-
     except Exception as e:
         logger.error(f"Log purge failed: {e}", exc_info=True)
 

@@ -154,7 +154,7 @@ async def fetch_snmp_data(device_ip, snmp_version, community=None, v3_user=None,
 
     try:
         comm_masked = (community[:2] + "***") if community and len(community) > 2 else ("*" * len(community)) if community else "??"
-        logger.info(f"SNMP TRY {device_ip} v={snmp_version} comm={comm_masked} name={device_name or '-'}")
+        logger.debug(f"SNMP TRY {device_ip} v={snmp_version} comm={comm_masked} name={device_name or '-'}")
 
         t_start = time.monotonic()
         if engine is None:
@@ -182,7 +182,7 @@ async def fetch_snmp_data(device_ip, snmp_version, community=None, v3_user=None,
             logger.error(f"SNMP FAIL {device_ip} ({t_elapsed:.1f}s) status={errorStatus.prettyPrint()}")
             return None
         else:
-            logger.info(f"SNMP OK {device_ip} ({t_elapsed:.1f}s)")
+            logger.debug(f"SNMP OK {device_ip} ({t_elapsed:.1f}s)")
             result = {}
             for varBind in varBinds:
                 oid = varBind[0].prettyPrint()
@@ -344,7 +344,7 @@ async def poll_all_devices():
                 )
             )
             devices = result.scalars().all()
-            logger.info(f"SNMP POLL START: {len(devices)} device(s), first: {devices[0].ip_address if devices else 'none'}")
+            logger.info(f"SNMP POLL START: {len(devices)} device(s)")
 
             if not devices:
                 return
@@ -416,6 +416,11 @@ async def poll_all_devices():
                         results.append(None)
                 else:
                     results.append(None)
+
+            # Log per-cycle summary (one line instead of 2N per-device lines)
+            snmp_ok = sum(1 for r in results if isinstance(r, dict))
+            snmp_fail = len(results) - snmp_ok
+            logger.info(f"SNMP POLL DONE: {snmp_ok} OK, {snmp_fail} failed, {len(devices)} total")
 
             # Fetch all DeviceStatus records in chunked queries to avoid SQLite's 999-variable limit
             device_ids = [d.id for d, r in zip(devices, results) if isinstance(r, dict)]
