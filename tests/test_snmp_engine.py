@@ -211,7 +211,7 @@ async def test_fetch_snmp_v2c_basic():
         first_response=(None, None, None, sys_binds),
         second_response=(None, None, None, []),
     )):
-        with patch("core.snmp_engine.SnmpEngine"):
+        with patch("core.snmp_engine.get_snmp_engine", return_value=MagicMock()):
             result = await fetch_snmp_data(
                 device_ip="10.0.0.1", snmp_version="v2c",
                 community="public", device_name="TestSwitch",
@@ -241,7 +241,7 @@ async def test_fetch_snmp_v3_auth_priv():
         first_response=(None, None, None, sys_binds),
         second_response=(None, None, None, []),
     )):
-        with patch("core.snmp_engine.SnmpEngine"):
+        with patch("core.snmp_engine.get_snmp_engine", return_value=MagicMock()):
             result = await fetch_snmp_data(
                 device_ip="10.0.0.2", snmp_version="v3",
                 v3_user="admin", v3_auth="authpass", v3_priv="privpass",
@@ -265,7 +265,7 @@ async def test_fetch_snmp_returns_none_on_error_indication():
     with patch("core.snmp_engine.getCmd", side_effect=_make_mock_get_cmd(
         first_response=("timeout", None, None, []),
     )):
-        with patch("core.snmp_engine.SnmpEngine"):
+        with patch("core.snmp_engine.get_snmp_engine", return_value=MagicMock()):
             result = await fetch_snmp_data(
                 device_ip="10.0.0.4", snmp_version="v2c", community="public",
             )
@@ -280,7 +280,7 @@ async def test_fetch_snmp_returns_none_on_error_status():
     with patch("core.snmp_engine.getCmd", side_effect=_make_mock_get_cmd(
         first_response=(None, error_status, 0, []),
     )):
-        with patch("core.snmp_engine.SnmpEngine"):
+        with patch("core.snmp_engine.get_snmp_engine", return_value=MagicMock()):
             result = await fetch_snmp_data(
                 device_ip="10.0.0.5", snmp_version="v2c", community="public",
             )
@@ -293,7 +293,7 @@ async def test_fetch_snmp_exception_returns_none():
     async def mock_get_cmd(*args, **kwargs):
         raise ConnectionRefusedError("no route to host")
     with patch("core.snmp_engine.getCmd", side_effect=mock_get_cmd):
-        with patch("core.snmp_engine.SnmpEngine"):
+        with patch("core.snmp_engine.get_snmp_engine", return_value=MagicMock()):
             result = await fetch_snmp_data(
                 device_ip="10.0.0.6", snmp_version="v2c", community="public",
             )
@@ -331,7 +331,7 @@ async def test_switch_extra_oids_requested():
             return (None, None, None, [])
         return _inner()
     with patch("core.snmp_engine.getCmd", side_effect=mock_get_cmd):
-        with patch("core.snmp_engine.SnmpEngine"):
+        with patch("core.snmp_engine.get_snmp_engine", return_value=MagicMock()):
             result = await fetch_snmp_data(
                 device_ip="10.0.0.7", snmp_version="v2c",
                 community="public", device_type="Switch", device_name="CoreSwitch1",
@@ -355,7 +355,7 @@ async def test_ups_extra_oids_requested():
             return (None, None, None, [])
         return _inner()
     with patch("core.snmp_engine.getCmd", side_effect=mock_get_cmd):
-        with patch("core.snmp_engine.SnmpEngine"):
+        with patch("core.snmp_engine.get_snmp_engine", return_value=MagicMock()):
             result = await fetch_snmp_data(
                 device_ip="10.0.0.8", snmp_version="v2c",
                 community="public", device_type="UPS",
@@ -379,7 +379,7 @@ async def test_printer_extra_oids_requested():
             return (None, None, None, [])
         return _inner()
     with patch("core.snmp_engine.getCmd", side_effect=mock_get_cmd):
-        with patch("core.snmp_engine.SnmpEngine"):
+        with patch("core.snmp_engine.get_snmp_engine", return_value=MagicMock()):
             result = await fetch_snmp_data(
                 device_ip="10.0.0.9", snmp_version="v2c",
                 community="public", device_type="Printer",
@@ -403,7 +403,7 @@ async def test_server_extra_oids_requested():
             return (None, None, None, [])
         return _inner()
     with patch("core.snmp_engine.getCmd", side_effect=mock_get_cmd):
-        with patch("core.snmp_engine.SnmpEngine"):
+        with patch("core.snmp_engine.get_snmp_engine", return_value=MagicMock()):
             result = await fetch_snmp_data(
                 device_ip="10.0.0.10", snmp_version="v2c",
                 community="public", device_type="Server",
@@ -427,7 +427,7 @@ async def test_wlc_extra_oids_requested():
             return (None, None, None, [])
         return _inner()
     with patch("core.snmp_engine.getCmd", side_effect=mock_get_cmd):
-        with patch("core.snmp_engine.SnmpEngine"):
+        with patch("core.snmp_engine.get_snmp_engine", return_value=MagicMock()):
             result = await fetch_snmp_data(
                 device_ip="10.0.0.11", snmp_version="v2c",
                 community="public", device_type="Wireless Controller (WLC)",
@@ -451,7 +451,7 @@ async def test_unknown_device_type_only_base_oids():
             return (None, None, None, [])
         return _inner()
     with patch("core.snmp_engine.getCmd", side_effect=mock_get_cmd):
-        with patch("core.snmp_engine.SnmpEngine"):
+        with patch("core.snmp_engine.get_snmp_engine", return_value=MagicMock()):
             result = await fetch_snmp_data(
                 device_ip="10.0.0.12", snmp_version="v2c",
                 community="public", device_type="iot-sensor",
@@ -479,7 +479,7 @@ async def test_switch_custom_data_parsing():
         first_response=(None, None, None, sys_binds),
         second_response=(None, None, None, extra_binds),
     )):
-        with patch("core.snmp_engine.SnmpEngine"):
+        with patch("core.snmp_engine.get_snmp_engine", return_value=MagicMock()):
             result = await fetch_snmp_data(
                 device_ip="10.0.0.13", snmp_version="v2c",
                 community="public", device_type="Switch",
@@ -505,7 +505,7 @@ async def test_ups_custom_data_parsing():
         first_response=(None, None, None, sys_binds),
         second_response=(None, None, None, extra_binds),
     )):
-        with patch("core.snmp_engine.SnmpEngine"):
+        with patch("core.snmp_engine.get_snmp_engine", return_value=MagicMock()):
             result = await fetch_snmp_data(
                 device_ip="10.0.0.14", snmp_version="v2c",
                 community="public", device_type="UPS",
@@ -528,7 +528,7 @@ async def test_ups_battery_status_map():
         first_response=(None, None, None, sys_binds),
         second_response=(None, None, None, extra_binds),
     )):
-        with patch("core.snmp_engine.SnmpEngine"):
+        with patch("core.snmp_engine.get_snmp_engine", return_value=MagicMock()):
             result = await fetch_snmp_data(
                 device_ip="10.0.0.15", snmp_version="v2c",
                 community="public", device_type="UPS",
@@ -551,7 +551,7 @@ async def test_ups_unknown_battery_code():
         first_response=(None, None, None, sys_binds),
         second_response=(None, None, None, extra_binds),
     )):
-        with patch("core.snmp_engine.SnmpEngine"):
+        with patch("core.snmp_engine.get_snmp_engine", return_value=MagicMock()):
             result = await fetch_snmp_data(
                 device_ip="10.0.0.16", snmp_version="v2c",
                 community="public", device_type="UPS",
@@ -574,7 +574,7 @@ async def test_printer_custom_data_parsing():
         first_response=(None, None, None, sys_binds),
         second_response=(None, None, None, extra_binds),
     )):
-        with patch("core.snmp_engine.SnmpEngine"):
+        with patch("core.snmp_engine.get_snmp_engine", return_value=MagicMock()):
             result = await fetch_snmp_data(
                 device_ip="10.0.0.17", snmp_version="v2c",
                 community="public", device_type="Printer",
@@ -599,7 +599,7 @@ async def test_server_custom_data_parsing():
         first_response=(None, None, None, sys_binds),
         second_response=(None, None, None, extra_binds),
     )):
-        with patch("core.snmp_engine.SnmpEngine"):
+        with patch("core.snmp_engine.get_snmp_engine", return_value=MagicMock()):
             result = await fetch_snmp_data(
                 device_ip="10.0.0.18", snmp_version="v2c",
                 community="public", device_type="Server",
@@ -623,7 +623,7 @@ async def test_wlc_client_count_and_ap_count():
         first_response=(None, None, None, sys_binds),
         second_response=(None, None, None, extra_binds),
     )):
-        with patch("core.snmp_engine.SnmpEngine"):
+        with patch("core.snmp_engine.get_snmp_engine", return_value=MagicMock()):
             result = await fetch_snmp_data(
                 device_ip="10.0.0.19", snmp_version="v2c",
                 community="public", device_type="Wireless Controller (WLC)",
@@ -644,7 +644,7 @@ async def test_wlc_client_count_fallback_oid():
         first_response=(None, None, None, sys_binds),
         second_response=(None, None, None, extra_binds),
     )):
-        with patch("core.snmp_engine.SnmpEngine"):
+        with patch("core.snmp_engine.get_snmp_engine", return_value=MagicMock()):
             result = await fetch_snmp_data(
                 device_ip="10.0.0.20", snmp_version="v2c",
                 community="public", device_type="Wireless Controller (WLC)",
@@ -664,7 +664,7 @@ async def test_wlc_client_count_third_fallback_oid():
         first_response=(None, None, None, sys_binds),
         second_response=(None, None, None, extra_binds),
     )):
-        with patch("core.snmp_engine.SnmpEngine"):
+        with patch("core.snmp_engine.get_snmp_engine", return_value=MagicMock()):
             result = await fetch_snmp_data(
                 device_ip="10.0.0.21", snmp_version="v2c",
                 community="public", device_type="Wireless Controller (WLC)",
@@ -684,7 +684,7 @@ async def test_nasobject_value_skipped():
         first_response=(None, None, None, sys_binds),
         second_response=(None, None, None, extra_binds),
     )):
-        with patch("core.snmp_engine.SnmpEngine"):
+        with patch("core.snmp_engine.get_snmp_engine", return_value=MagicMock()):
             result = await fetch_snmp_data(
                 device_ip="10.0.0.22", snmp_version="v2c",
                 community="public", device_type="Server",
@@ -706,7 +706,7 @@ async def test_serial_number_parsed():
         first_response=(None, None, None, sys_binds),
         second_response=(None, None, None, extra_binds),
     )):
-        with patch("core.snmp_engine.SnmpEngine"):
+        with patch("core.snmp_engine.get_snmp_engine", return_value=MagicMock()):
             result = await fetch_snmp_data(
                 device_ip="10.0.0.23", snmp_version="v2c",
                 community="public", device_type="Switch",
@@ -726,7 +726,7 @@ async def test_extra_oid_error_returns_base_result():
         first_response=(None, None, None, sys_binds),
         second_response=("timeout", None, None, []),
     )):
-        with patch("core.snmp_engine.SnmpEngine"):
+        with patch("core.snmp_engine.get_snmp_engine", return_value=MagicMock()):
             result = await fetch_snmp_data(
                 device_ip="10.0.0.26", snmp_version="v2c",
                 community="public", device_type="Switch",

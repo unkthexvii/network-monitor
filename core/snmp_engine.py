@@ -16,21 +16,16 @@ from database.models import Device, DeviceStatus
 
 logger = logging.getLogger("SNMPEngine")
 
-# Pre-resolved numeric OIDs - using numeric strings bypasses MIB loading entirely
-# This prevents unbounded MibBuilder cache growth over time (was causing 2.9GB RSS)
-# SNMPv2-MIB OIDs:
-#   sysName        = 1.3.6.1.2.1.1.5
-#   sysDescr       = 1.3.6.1.2.1.1.1
-#   sysUpTime      = 1.3.6.1.2.1.1.3
-#   sysContact     = 1.3.6.1.2.1.1.4
-#   sysLocation    = 1.3.6.1.2.1.1.6
+# Pre-resolved numeric OIDs — using numeric strings bypasses MIB loading,
+# preventing unbounded MibBuilder cache growth over time.
+# SNMPv2-MIB numeric equivalents:
 SNMP_OID_SYSNAME = "1.3.6.1.2.1.1.5"
 SNMP_OID_SYSDESCR = "1.3.6.1.2.1.1.1"
 SNMP_OID_SYSUPTIME = "1.3.6.1.2.1.1.3"
 SNMP_OID_SYSCONTACT = "1.3.6.1.2.1.1.4"
 SNMP_OID_SYSLOCATION = "1.3.6.1.2.1.1.6"
 
-# Base OIDs for all SNMP devices (already numeric)
+# Base OIDs for all SNMP devices
 SNMP_OID_IFNUMBER = "1.3.6.1.2.1.2.1.0"
 SNMP_OID_ENTPHYSICAL_SERIALNUM = "1.3.6.1.2.1.47.1.1.1.1.11.1"
 SNMP_OID_ENTPHYSICAL_MODELNAME = "1.3.6.1.2.1.47.1.1.1.1.13.1"
@@ -55,11 +50,89 @@ SNMP_OID_SERVER_STORAGE_TOTAL = "1.3.6.1.2.1.25.2.3.1.5.1"
 SNMP_OID_SERVER_STORAGE_USED = "1.3.6.1.2.1.25.2.3.1.6.1"
 
 
+# ── Global Singleton SnmpEngine ──
+# PySNMP is designed for engine reuse, not create-destroy. Creating a new
+# SnmpEngine every poll cycle loads 5 core MIB modules each time and
+# accumulates unbounded state (nextid.Integer bank, LCD caches, MibBuilder).
+# A single shared engine avoids this entirely. Periodic reset via
+# reset_snmp_engine() properly releases accumulated state using the
+# library's documented cleanup APIs:
+#   1. transportDispatcher.closeDispatcher() — closes UDP sockets, cancels tasks
+#   2. unregisterTransportDispatcher() — unbinds engine callbacks
+#   3. getMibBuilder().unloadModules() — frees MibBuilder cache
+#   4. cache.clear() — clears user context (MibViewController, LCD)
+#
+# The asyncio.Lock prevents concurrent reset + poll_cycle races.
+# Concurrent getCmd calls on the shared engine are safe — PySNMP creates
+# ad-hoc transport sessions internally.
+
+_snmp_engine: SnmpEngine | None = None
+_snmp_engine_lock = asyncio.Lock()
+
+
+async def get_snmp_engine() -> SnmpEngine:
+    """Return the global singleton SnmpEngine, creating it lazily if needed."""
+    global _snmp_engine
+    if _snmp_engine is None:
+        _snmp_engine = SnmpEngine()
+        logger.info("SNMP engine created (global singleton)")
+    return _snmp_engine
+
+
+async def reset_snmp_engine():
+    """Reset the global SnmpEngine using PySNMP's documented cleanup APIs.
+
+    Frees accumulated state (MibBuilder cache, transport sockets, LCD caches).
+    Called by the scheduler every 23h to prevent long-term memory growth.
+    """
+    global _snmp_engine
+    old = _snmp_engine
+    if old is None:
+        return
+
+    async with _snmp_engine_lock:
+        # Verify old hasn't been replaced by a concurrent reset
+        if _snmp_engine is not old:
+            return
+
+        # Step 1: Close transport dispatcher (UDP sockets, asyncio tasks)
+        try:
+            if old.transportDispatcher is not None:
+                old.transportDispatcher.closeDispatcher()
+                logger.debug("SNMP transport dispatcher closed")
+        except Exception as ex:
+            logger.warning(f"SNMP closeDispatcher error (non-fatal): {ex}")
+
+        # Step 2: Unbind transport dispatcher from engine
+        try:
+            old.unregisterTransportDispatcher()
+            logger.debug("SNMP transport dispatcher unregistered")
+        except Exception as ex:
+            logger.warning(f"SNMP unregisterTransportDispatcher error (non-fatal): {ex}")
+
+        # Step 3: Free MibBuilder cache (OidOrderedDict, MibScalarInstance, PLY tables)
+        try:
+            old.getMibBuilder().unloadModules()
+            logger.debug("SNMP MIB modules unloaded (MibBuilder cache freed)")
+        except Exception as ex:
+            logger.warning(f"SNMP unloadModules error (non-fatal): {ex}")
+
+        # Step 4: Clear user context (MibViewController, LCD configurator caches)
+        try:
+            old.cache.clear()
+            logger.debug("SNMP engine user context cleared")
+        except Exception as ex:
+            logger.warning(f"SNMP engine cache.clear error (non-fatal): {ex}")
+
+        del old
+        _snmp_engine = SnmpEngine()
+        logger.info("SNMP engine reset complete — new engine created")
+
+
 async def fetch_snmp_data(device_ip, snmp_version, community=None, v3_user=None, v3_auth=None, v3_priv=None, device_type=None, device_name=None, engine=None):
     """
     Fetches sysName, sysDescr, and sysUpTime from the target device.
-    Creates a fresh SnmpEngine per call to avoid concurrency issues with
-    PySNMP's internal state when multiple coroutines poll simultaneously.
+    Uses the global singleton SnmpEngine (passed by caller or resolved lazily).
     """
     auth_data = None
     if snmp_version == "v2c" and community:
@@ -67,7 +140,7 @@ async def fetch_snmp_data(device_ip, snmp_version, community=None, v3_user=None,
     elif snmp_version == "v3" and v3_user:
         auth_proto = usmHMACSHAAuthProtocol if v3_auth else None
         priv_proto = usmAesCfb128Protocol if v3_priv else None
-        
+
         auth_data = UsmUserData(
             userName=v3_user,
             authKey=v3_auth if v3_auth else None,
@@ -84,185 +157,172 @@ async def fetch_snmp_data(device_ip, snmp_version, community=None, v3_user=None,
         logger.info(f"SNMP TRY {device_ip} v={snmp_version} comm={comm_masked} name={device_name or '-'}")
 
         t_start = time.monotonic()
-        created_engine = engine is None
         if engine is None:
-            engine = SnmpEngine()
-        try:
-            _result = await getCmd(
-                engine,
-                auth_data,
-                UdpTransportTarget((device_ip, 161), timeout=2, retries=1),
-                ContextData(),
-                ObjectType(ObjectIdentity(SNMP_OID_SYSNAME)),
-                ObjectType(ObjectIdentity(SNMP_OID_SYSDESCR)),
-                ObjectType(ObjectIdentity(SNMP_OID_SYSUPTIME)),
-                ObjectType(ObjectIdentity(SNMP_OID_SYSCONTACT)),
-                ObjectType(ObjectIdentity(SNMP_OID_SYSLOCATION)),
-                lookupMib=False,  # Skip MIB resolution on response — prevents PLY parser / MibBuilder cache growth
-            )
-            errorIndication, errorStatus, errorIndex, varBinds = await _result
-            t_elapsed = time.monotonic() - t_start
+            engine = await get_snmp_engine()
 
-            if errorIndication:
-                logger.error(f"SNMP FAIL {device_ip} ({t_elapsed:.1f}s) {errorIndication}")
-                return None
-            elif errorStatus:
-                logger.error(f"SNMP FAIL {device_ip} ({t_elapsed:.1f}s) status={errorStatus.prettyPrint()}")
-                return None
-            else:
-                logger.info(f"SNMP OK {device_ip} ({t_elapsed:.1f}s)")
-                result = {}
-                for varBind in varBinds:
-                    oid = varBind[0].prettyPrint()
-                    val = varBind[1].prettyPrint()
-                    # Match against numeric OID prefixes (scalar instances
-                    # append .0 to the base OID, so endswith() doesn't work)
-                    if oid.startswith(SNMP_OID_SYSNAME + "."):
-                        result['sys_name'] = val
-                    elif oid.startswith(SNMP_OID_SYSCONTACT + "."):
-                        result['sys_contact'] = val
-                    elif oid.startswith(SNMP_OID_SYSLOCATION + "."):
-                        result['sys_location'] = val
-                    elif oid.startswith(SNMP_OID_SYSDESCR + "."):
-                        result['sys_descr'] = val
-                    elif oid.startswith(SNMP_OID_SYSUPTIME + "."):
-                        # Convert timeticks to string format roughly (days, hh:mm:ss)
-                        try:
-                            ticks = int(varBind[1])
-                            seconds = ticks / 100.0
-                            m, s = divmod(seconds, 60)
-                            h, m = divmod(m, 60)
-                            d, h = divmod(h, 24)
-                            result['sys_uptime'] = f"{int(d)}d {int(h):02d}:{int(m):02d}:{int(s):02d}"
-                        except Exception:
-                            result['sys_uptime'] = val
+        _result = await getCmd(
+            engine,
+            auth_data,
+            UdpTransportTarget((device_ip, 161), timeout=2, retries=1),
+            ContextData(),
+            ObjectType(ObjectIdentity(SNMP_OID_SYSNAME)),
+            ObjectType(ObjectIdentity(SNMP_OID_SYSDESCR)),
+            ObjectType(ObjectIdentity(SNMP_OID_SYSUPTIME)),
+            ObjectType(ObjectIdentity(SNMP_OID_SYSCONTACT)),
+            ObjectType(ObjectIdentity(SNMP_OID_SYSLOCATION)),
+            lookupMib=False,  # Skip MIB resolution on response
+        )
+        errorIndication, errorStatus, errorIndex, varBinds = await _result
+        t_elapsed = time.monotonic() - t_start
 
-                # ── Base OIDs for ALL SNMP devices ──
-                extra_oids = []
-                extra_oids.append(ObjectType(ObjectIdentity(SNMP_OID_IFNUMBER)))
-                extra_oids.append(ObjectType(ObjectIdentity(SNMP_OID_ENTPHYSICAL_SERIALNUM)))
-                extra_oids.append(ObjectType(ObjectIdentity(SNMP_OID_ENTPHYSICAL_MODELNAME)))
-                extra_oids.append(ObjectType(ObjectIdentity(SNMP_OID_ENTPHYSICAL_NAME)))
+        if errorIndication:
+            logger.error(f"SNMP FAIL {device_ip} ({t_elapsed:.1f}s) {errorIndication}")
+            return None
+        elif errorStatus:
+            logger.error(f"SNMP FAIL {device_ip} ({t_elapsed:.1f}s) status={errorStatus.prettyPrint()}")
+            return None
+        else:
+            logger.info(f"SNMP OK {device_ip} ({t_elapsed:.1f}s)")
+            result = {}
+            for varBind in varBinds:
+                oid = varBind[0].prettyPrint()
+                val = varBind[1].prettyPrint()
+                if oid.startswith(SNMP_OID_SYSNAME + "."):
+                    result['sys_name'] = val
+                elif oid.startswith(SNMP_OID_SYSCONTACT + "."):
+                    result['sys_contact'] = val
+                elif oid.startswith(SNMP_OID_SYSLOCATION + "."):
+                    result['sys_location'] = val
+                elif oid.startswith(SNMP_OID_SYSDESCR + "."):
+                    result['sys_descr'] = val
+                elif oid.startswith(SNMP_OID_SYSUPTIME + "."):
+                    try:
+                        ticks = int(varBind[1])
+                        seconds = ticks / 100.0
+                        m, s = divmod(seconds, 60)
+                        h, m = divmod(m, 60)
+                        d, h = divmod(h, 24)
+                        result['sys_uptime'] = f"{int(d)}d {int(h):02d}:{int(m):02d}:{int(s):02d}"
+                    except Exception:
+                        result['sys_uptime'] = val
 
-                # ── Type-specific OIDs ──
-                device_type_clean = (device_type or "").lower()
-                is_switch = device_type_clean in ["switch", "router", "gateway", "firewall"]
-                is_wlc = device_type_clean in ["wireless controller (wlc)", "controller", "access point"] or (device_name and "WLC" in str(device_name).upper())
-                is_ups = device_type_clean == "ups"
-                is_printer = device_type_clean == "printer"
-                is_server = device_type_clean in ["server", "virtual machine", "hypervisor", "storage/nas", "database"]
+            # ── Base OIDs for ALL SNMP devices ──
+            extra_oids = []
+            extra_oids.append(ObjectType(ObjectIdentity(SNMP_OID_IFNUMBER)))
+            extra_oids.append(ObjectType(ObjectIdentity(SNMP_OID_ENTPHYSICAL_SERIALNUM)))
+            extra_oids.append(ObjectType(ObjectIdentity(SNMP_OID_ENTPHYSICAL_MODELNAME)))
+            extra_oids.append(ObjectType(ObjectIdentity(SNMP_OID_ENTPHYSICAL_NAME)))
 
-                if is_switch:
-                    # Cisco CPU/memory/temperature
-                    extra_oids.append(ObjectType(ObjectIdentity(SNMP_OID_CISCO_CPU_5MIN)))
-                    extra_oids.append(ObjectType(ObjectIdentity(SNMP_OID_CISCO_MEM_USED)))
-                    extra_oids.append(ObjectType(ObjectIdentity(SNMP_OID_CISCO_MEM_FREE)))
-                    extra_oids.append(ObjectType(ObjectIdentity(SNMP_OID_CISCO_TEMP)))
+            # ── Type-specific OIDs ──
+            device_type_clean = (device_type or "").lower()
+            is_switch = device_type_clean in ["switch", "router", "gateway", "firewall"]
+            is_wlc = device_type_clean in ["wireless controller (wlc)", "controller", "access point"] or (device_name and "WLC" in str(device_name).upper())
+            is_ups = device_type_clean == "ups"
+            is_printer = device_type_clean == "printer"
+            is_server = device_type_clean in ["server", "virtual machine", "hypervisor", "storage/nas", "database"]
 
-                if is_wlc:
-                    # Client count (try 3 OIDs in order)
-                    extra_oids.append(ObjectType(ObjectIdentity(SNMP_OID_WLC_CLIENT_COUNT)))
-                    extra_oids.append(ObjectType(ObjectIdentity(SNMP_OID_WLC_CLIENT_COUNT_ALT)))
-                    extra_oids.append(ObjectType(ObjectIdentity(SNMP_OID_WLC_CLIENT_COUNT_ALT2)))
-                    # AP count
-                    extra_oids.append(ObjectType(ObjectIdentity(SNMP_OID_WLC_AP_COUNT)))
+            if is_switch:
+                extra_oids.append(ObjectType(ObjectIdentity(SNMP_OID_CISCO_CPU_5MIN)))
+                extra_oids.append(ObjectType(ObjectIdentity(SNMP_OID_CISCO_MEM_USED)))
+                extra_oids.append(ObjectType(ObjectIdentity(SNMP_OID_CISCO_MEM_FREE)))
+                extra_oids.append(ObjectType(ObjectIdentity(SNMP_OID_CISCO_TEMP)))
 
-                if is_ups:
-                    extra_oids.append(ObjectType(ObjectIdentity(SNMP_OID_UPS_BATTERY_STATUS)))
-                    extra_oids.append(ObjectType(ObjectIdentity(SNMP_OID_UPS_BATTERY_CHARGE)))
+            if is_wlc:
+                extra_oids.append(ObjectType(ObjectIdentity(SNMP_OID_WLC_CLIENT_COUNT)))
+                extra_oids.append(ObjectType(ObjectIdentity(SNMP_OID_WLC_CLIENT_COUNT_ALT)))
+                extra_oids.append(ObjectType(ObjectIdentity(SNMP_OID_WLC_CLIENT_COUNT_ALT2)))
+                extra_oids.append(ObjectType(ObjectIdentity(SNMP_OID_WLC_AP_COUNT)))
 
-                if is_printer:
-                    extra_oids.append(ObjectType(ObjectIdentity(SNMP_OID_PRINTER_TONER)))
-                    extra_oids.append(ObjectType(ObjectIdentity(SNMP_OID_PRINTER_PAGES)))
-                    extra_oids.append(ObjectType(ObjectIdentity(SNMP_OID_PRINTER_NAME)))
+            if is_ups:
+                extra_oids.append(ObjectType(ObjectIdentity(SNMP_OID_UPS_BATTERY_STATUS)))
+                extra_oids.append(ObjectType(ObjectIdentity(SNMP_OID_UPS_BATTERY_CHARGE)))
 
-                if is_server:
-                    extra_oids.append(ObjectType(ObjectIdentity(SNMP_OID_SERVER_CPU_LOAD)))
-                    extra_oids.append(ObjectType(ObjectIdentity(SNMP_OID_SERVER_STORAGE_TOTAL)))
-                    extra_oids.append(ObjectType(ObjectIdentity(SNMP_OID_SERVER_STORAGE_USED)))
-                
-                if extra_oids:
-                    _res2 = await getCmd(
-                        engine,
-                        auth_data,
-                        UdpTransportTarget((device_ip, 161), timeout=2, retries=1),
-                        ContextData(),
-                        *extra_oids,
-                        lookupMib=False,  # Skip MIB resolution on response
-                    )
-                    e_Ind, e_Stat, e_Idx, e_Binds = await _res2
-                    if not e_Ind and not e_Stat:
-                        custom_data = {}
-                        for varBind in e_Binds:
-                            oid = varBind[0].prettyPrint()
-                            val = varBind[1]
-                            cls = val.__class__.__name__
-                            if cls not in ('NoSuchObject', 'NoSuchInstance', 'EndOfMibView'):
-                                val_str = val.prettyPrint()
-                                # ── Base OIDs (use constants for consistency) ──
-                                if oid.endswith(SNMP_OID_IFNUMBER):
-                                    custom_data['Interfaces'] = val_str
-                                elif oid.endswith(SNMP_OID_ENTPHYSICAL_SERIALNUM):
-                                    result['serial_number'] = val_str
-                                elif oid.endswith(SNMP_OID_ENTPHYSICAL_MODELNAME):
-                                    custom_data['Model Name'] = val_str
-                                elif oid.endswith(SNMP_OID_ENTPHYSICAL_NAME):
-                                    custom_data['Chassis Name'] = val_str
-                                # ── WLC client count (first match wins, skip others) ──
-                                elif oid.endswith(SNMP_OID_WLC_CLIENT_COUNT):
-                                    try: result['client_count'] = int(val_str)
-                                    except (ValueError, TypeError) as e: logger.debug(f"SNMP parse client_count for {device_ip}: {e}")
-                                elif oid.endswith(SNMP_OID_WLC_CLIENT_COUNT_ALT) and 'client_count' not in result:
-                                    try: result['client_count'] = int(val_str)
-                                    except (ValueError, TypeError) as e: logger.debug(f"SNMP parse client_count for {device_ip}: {e}")
-                                elif oid.endswith(SNMP_OID_WLC_CLIENT_COUNT_ALT2) and 'client_count' not in result:
-                                    try: result['client_count'] = int(val_str)
-                                    except (ValueError, TypeError) as e: logger.debug(f"SNMP parse client_count for {device_ip}: {e}")
-                                # ── WLC AP count ──
-                                elif oid.endswith(SNMP_OID_WLC_AP_COUNT):
-                                    try: result['ap_count'] = int(val_str)
-                                    except (ValueError, TypeError) as e: logger.debug(f"SNMP parse ap_count for {device_ip}: {e}")
-                                # ── Switch/router (Cisco) ──
-                                elif oid.endswith(SNMP_OID_CISCO_CPU_5MIN):
-                                    custom_data['CPU 5min %'] = val_str
-                                elif oid.endswith(SNMP_OID_CISCO_MEM_USED):
-                                    custom_data['Mem Used'] = val_str
-                                elif oid.endswith(SNMP_OID_CISCO_MEM_FREE):
-                                    custom_data['Mem Free'] = val_str
-                                elif oid.endswith(SNMP_OID_CISCO_TEMP):
-                                    custom_data['Temperature'] = val_str
-                                # ── UPS ──
-                                elif oid.endswith(SNMP_OID_UPS_BATTERY_STATUS):
-                                    status_map = {'1': 'Unknown', '2': 'Normal', '3': 'Low', '4': 'Depleted'}
-                                    custom_data['Battery Status'] = status_map.get(val_str, f"Code {val_str}")
-                                elif oid.endswith(SNMP_OID_UPS_BATTERY_CHARGE):
-                                    custom_data['Battery Level'] = f"{val_str}%"
-                                # ── Printer ──
-                                elif oid.endswith(SNMP_OID_PRINTER_TONER):
-                                    custom_data['Toner Level'] = f"{val_str}%"
-                                elif oid.endswith(SNMP_OID_PRINTER_PAGES):
-                                    custom_data['Pages Printed'] = val_str
-                                elif oid.endswith(SNMP_OID_PRINTER_NAME):
-                                    custom_data['Printer Name'] = val_str
-                                # ── Server ──
-                                elif oid.endswith(SNMP_OID_SERVER_CPU_LOAD):
-                                    custom_data['CPU Load %'] = f"{val_str}%"
-                                elif oid.endswith(SNMP_OID_SERVER_STORAGE_TOTAL):
-                                    custom_data['Storage Total'] = val_str
-                                elif oid.endswith(SNMP_OID_SERVER_STORAGE_USED):
-                                    custom_data['Storage Used'] = val_str
-                            else:
-                                logger.debug(f"SNMP OID skipped for {device_ip}: {oid} = {cls}")
-                        if custom_data:
-                            result['custom_data'] = json.dumps(custom_data)
+            if is_printer:
+                extra_oids.append(ObjectType(ObjectIdentity(SNMP_OID_PRINTER_TONER)))
+                extra_oids.append(ObjectType(ObjectIdentity(SNMP_OID_PRINTER_PAGES)))
+                extra_oids.append(ObjectType(ObjectIdentity(SNMP_OID_PRINTER_NAME)))
 
-                return result
-        finally:
-            # SnmpEngine (asyncio) has no close() method — the previous
-            # attempt was silently swallowing AttributeError, so resources
-            # were never actually cleaned up. The engine is now garbage
-            # collected naturally when the function returns.
-            pass
+            if is_server:
+                extra_oids.append(ObjectType(ObjectIdentity(SNMP_OID_SERVER_CPU_LOAD)))
+                extra_oids.append(ObjectType(ObjectIdentity(SNMP_OID_SERVER_STORAGE_TOTAL)))
+                extra_oids.append(ObjectType(ObjectIdentity(SNMP_OID_SERVER_STORAGE_USED)))
+
+            if extra_oids:
+                _res2 = await getCmd(
+                    engine,
+                    auth_data,
+                    UdpTransportTarget((device_ip, 161), timeout=2, retries=1),
+                    ContextData(),
+                    *extra_oids,
+                    lookupMib=False,
+                )
+                e_Ind, e_Stat, e_Idx, e_Binds = await _res2
+                if not e_Ind and not e_Stat:
+                    custom_data = {}
+                    for varBind in e_Binds:
+                        oid = varBind[0].prettyPrint()
+                        val = varBind[1]
+                        cls = val.__class__.__name__
+                        if cls not in ('NoSuchObject', 'NoSuchInstance', 'EndOfMibView'):
+                            val_str = val.prettyPrint()
+                            # ── Base OIDs ──
+                            if oid.endswith(SNMP_OID_IFNUMBER):
+                                custom_data['Interfaces'] = val_str
+                            elif oid.endswith(SNMP_OID_ENTPHYSICAL_SERIALNUM):
+                                result['serial_number'] = val_str
+                            elif oid.endswith(SNMP_OID_ENTPHYSICAL_MODELNAME):
+                                custom_data['Model Name'] = val_str
+                            elif oid.endswith(SNMP_OID_ENTPHYSICAL_NAME):
+                                custom_data['Chassis Name'] = val_str
+                            # ── WLC client count (first match wins) ──
+                            elif oid.endswith(SNMP_OID_WLC_CLIENT_COUNT):
+                                try: result['client_count'] = int(val_str)
+                                except (ValueError, TypeError) as e: logger.debug(f"SNMP parse client_count for {device_ip}: {e}")
+                            elif oid.endswith(SNMP_OID_WLC_CLIENT_COUNT_ALT) and 'client_count' not in result:
+                                try: result['client_count'] = int(val_str)
+                                except (ValueError, TypeError) as e: logger.debug(f"SNMP parse client_count for {device_ip}: {e}")
+                            elif oid.endswith(SNMP_OID_WLC_CLIENT_COUNT_ALT2) and 'client_count' not in result:
+                                try: result['client_count'] = int(val_str)
+                                except (ValueError, TypeError) as e: logger.debug(f"SNMP parse client_count for {device_ip}: {e}")
+                            # ── WLC AP count ──
+                            elif oid.endswith(SNMP_OID_WLC_AP_COUNT):
+                                try: result['ap_count'] = int(val_str)
+                                except (ValueError, TypeError) as e: logger.debug(f"SNMP parse ap_count for {device_ip}: {e}")
+                            # ── Switch/router (Cisco) ──
+                            elif oid.endswith(SNMP_OID_CISCO_CPU_5MIN):
+                                custom_data['CPU 5min %'] = val_str
+                            elif oid.endswith(SNMP_OID_CISCO_MEM_USED):
+                                custom_data['Mem Used'] = val_str
+                            elif oid.endswith(SNMP_OID_CISCO_MEM_FREE):
+                                custom_data['Mem Free'] = val_str
+                            elif oid.endswith(SNMP_OID_CISCO_TEMP):
+                                custom_data['Temperature'] = val_str
+                            # ── UPS ──
+                            elif oid.endswith(SNMP_OID_UPS_BATTERY_STATUS):
+                                status_map = {'1': 'Unknown', '2': 'Normal', '3': 'Low', '4': 'Depleted'}
+                                custom_data['Battery Status'] = status_map.get(val_str, f"Code {val_str}")
+                            elif oid.endswith(SNMP_OID_UPS_BATTERY_CHARGE):
+                                custom_data['Battery Level'] = f"{val_str}%"
+                            # ── Printer ──
+                            elif oid.endswith(SNMP_OID_PRINTER_TONER):
+                                custom_data['Toner Level'] = f"{val_str}%"
+                            elif oid.endswith(SNMP_OID_PRINTER_PAGES):
+                                custom_data['Pages Printed'] = val_str
+                            elif oid.endswith(SNMP_OID_PRINTER_NAME):
+                                custom_data['Printer Name'] = val_str
+                            # ── Server ──
+                            elif oid.endswith(SNMP_OID_SERVER_CPU_LOAD):
+                                custom_data['CPU Load %'] = f"{val_str}%"
+                            elif oid.endswith(SNMP_OID_SERVER_STORAGE_TOTAL):
+                                custom_data['Storage Total'] = val_str
+                            elif oid.endswith(SNMP_OID_SERVER_STORAGE_USED):
+                                custom_data['Storage Used'] = val_str
+                        else:
+                            logger.debug(f"SNMP OID skipped for {device_ip}: {oid} = {cls}")
+                    if custom_data:
+                        result['custom_data'] = json.dumps(custom_data)
+
+            return result
     except Exception as e:
         logger.error(f"SNMP Exception for {device_ip}: {e}", exc_info=True)
         return None
@@ -273,6 +333,7 @@ from sqlalchemy import select
 async def poll_all_devices():
     """
     Runs an SNMP poll against all enabled devices that have SNMP configured.
+    Uses the global singleton SnmpEngine (reused across all poll cycles).
     """
     try:
         async with async_session() as db:
@@ -289,7 +350,7 @@ async def poll_all_devices():
                 return
 
             sem = asyncio.Semaphore(50)
-            snmp_engine = SnmpEngine()
+            snmp_engine = await get_snmp_engine()
 
             async def sem_fetch(*args, **kwargs):
                 async with sem:
@@ -311,16 +372,6 @@ async def poll_all_devices():
                     )
                 )
 
-            # Use asyncio.wait() instead of asyncio.wait_for(gather()) so we
-            # can retrieve partial results from devices that responded before
-            # the timeout. asyncio.wait_for cancels the entire gather on timeout,
-            # discarding all results. asyncio.wait returns (done, pending) sets
-            # and leaves pending tasks running for a retry.
-            #
-            # Retry strategy:
-            #   1. First pass: 30s timeout (per-device SNMP timeout is 2s with 1 retry)
-            #   2. Second pass: 60s timeout for devices that didn't respond in pass 1
-            #   3. After pass 2: cancel any remaining tasks, log affected devices
             SNMP_POLL_TIMEOUT_1 = 30.0
             SNMP_POLL_TIMEOUT_2 = 60.0
 
@@ -336,9 +387,6 @@ async def poll_all_devices():
                     f"after {SNMP_POLL_TIMEOUT_1}s — retrying with "
                     f"{SNMP_POLL_TIMEOUT_2}s timeout. Affected: {timed_out_ips[:10]}"
                 )
-                # Retry only the pending tasks with a longer timeout.
-                # asyncio.wait does not cancel pending tasks on timeout,
-                # so they are still running and can be awaited again.
                 retry_done, retry_pending = await asyncio.wait(
                     pending, timeout=SNMP_POLL_TIMEOUT_2
                 )
@@ -353,13 +401,10 @@ async def poll_all_devices():
                         f"SNMP poll: {len(retry_pending)} device(s) still unreachable "
                         f"after retry. IPs: {still_pending_ips[:10]}"
                     )
-                    # Cancel remaining tasks to prevent resource leaks
                     for task in retry_pending:
                         task.cancel()
-                    # Retrieve CancelledError from cancelled tasks
                     await asyncio.gather(*retry_pending, return_exceptions=True)
 
-            # Build results list: None for timed-out/cancelled tasks
             results = []
             for task in tasks:
                 if task in done:
@@ -371,10 +416,6 @@ async def poll_all_devices():
                         results.append(None)
                 else:
                     results.append(None)
-
-            # SnmpEngine (asyncio) has no close() method — resources are garbage collected
-            # when the function returns. The previous close() call was silently
-            # failing with AttributeError, so this is correct behavior.
 
             # Fetch all DeviceStatus records in chunked queries to avoid SQLite's 999-variable limit
             device_ids = [d.id for d, r in zip(devices, results) if isinstance(r, dict)]
@@ -402,11 +443,9 @@ async def poll_all_devices():
                             if 'ap_count' in data: status.ap_count = data.get('ap_count')
                             if 'serial_number' in data: status.serial_number = data.get('serial_number')
                             if 'custom_data' in data: status.snmp_custom_data = data.get('custom_data')
-            
+
             await db.commit()
     except asyncio.CancelledError:
-        # In Python 3.9+, CancelledError is a BaseException, not an Exception,
-        # so the handler below does not catch it. Re-raise to propagate cancellation.
         logger.info("SNMP poll cycle cancelled")
         raise
     except Exception as e:

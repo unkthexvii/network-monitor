@@ -384,8 +384,8 @@ async def memory_cleanup():
 
 
 def start_scheduler():
-    from core.snmp_engine import poll_all_devices
-    
+    from core.snmp_engine import poll_all_devices, reset_snmp_engine
+
     # Schedule the ping polling every 1 second
     scheduler.add_job(schedule_pings, 'interval', seconds=1, id='ping_poller')
 
@@ -397,9 +397,15 @@ def start_scheduler():
 
     # Truncate WAL every 5 minutes
     scheduler.add_job(run_wal_checkpoint, 'interval', minutes=5, id='wal_checkpoint')
-    
+
     # SNMP Polling every 5 minutes
     scheduler.add_job(poll_all_devices, 'interval', minutes=5, id='snmp_poller')
+
+    # Periodic SNMP engine reset — frees MibBuilder cache, closes UDP sockets,
+    # resets transport state. With lookupMib=False the cache grows slowly, so
+    # 24h is sufficient. Offset by a few minutes from db_cleanup to avoid
+    # both running simultaneously.
+    scheduler.add_job(reset_snmp_engine, 'interval', hours=23, id='snmp_engine_reset')
 
     # Daily database cleanup
     scheduler.add_job(cleanup_old_data, 'interval', days=1, id='db_cleanup')
@@ -418,7 +424,7 @@ def start_scheduler():
     scheduler.add_job(memory_cleanup, 'interval', minutes=5, id='memory_cleanup')
 
     scheduler.start()
-    logger.info("Scheduler started: ping_poller (1s), minute_aggregator (1m), cache_refresh (30s), wal_checkpoint (5m), snmp_poller (5m), memory_cleanup (5m), db_vacuum (1w), log_purge (1h)")
+    logger.info("Scheduler started: ping_poller (1s), minute_aggregator (1m), cache_refresh (30s), wal_checkpoint (5m), snmp_poller (5m), snmp_engine_reset (23h), memory_cleanup (5m), db_vacuum (1w), log_purge (1h)")
 
 def shutdown_scheduler():
     scheduler.shutdown()
