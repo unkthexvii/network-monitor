@@ -2,6 +2,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
 import time
 from fastapi import APIRouter, Request, HTTPException
 from sse_starlette.sse import EventSourceResponse
@@ -15,6 +16,10 @@ _clients: dict[int, dict] = {}
 
 # How long without activity before a client is considered dead.
 _CLIENT_TIMEOUT_SECONDS = 300  # 5 minutes
+
+# Configurable limits — total global clients and per-IP.
+_MAX_TOTAL_CLIENTS = int(os.getenv("MONITOR_SSE_MAX_TOTAL", "50"))
+_MAX_PER_IP = int(os.getenv("MONITOR_SSE_MAX_PER_IP", "10"))
 
 async def sse_publisher(event_name: str, data: dict):
     """
@@ -38,21 +43,30 @@ async def _cleanup_stale_clients():
         if client:
             logger.info(f"SSE stale client {cid} cleaned up (inactive > {_CLIENT_TIMEOUT_SECONDS}s)")
 
-_MAX_PER_IP = 4
-
 
 @router.get("/api/stream")
 async def stream(request: Request):
     """
     SSE stream endpoint for live dashboard updates.
+
+    Limits:
+      - Per-IP (MONITOR_SSE_MAX_PER_IP, default 10): fairness guard.
+      - Total global (MONITOR_SSE_MAX_TOTAL, default 50): prevents fd exhaustion.
     """
+    total = len(_clients)
+    if total >= _MAX_TOTAL_CLIENTS:
+        async def deny_generator():
+            yield {"event": "connection_denied",
+                   "data": json.dumps({"reason": "server_full", "total_clients": total})}
+        return EventSourceResponse(deny_generator())
+
     ip = request.client.host if request.client else "unknown"
     ip_count = sum(1 for info in _clients.values() if info.get("ip") == ip)
     if ip_count >= _MAX_PER_IP:
         async def deny_generator():
             yield {"event": "connection_denied",
                    "data": json.dumps({"reason": "too_many_connections", "limit": _MAX_PER_IP, "current": ip_count})}
-        return EventSourceResponse(deny_generator())
+        return EventSourceResponse(deny_generator(), ping=30)
 
     q: asyncio.Queue[dict] = asyncio.Queue(maxsize=256)
     client_id = id(q)
