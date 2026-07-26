@@ -370,7 +370,11 @@ async def purge_logs():
 
 
 async def memory_cleanup():
-    """Periodic memory cleanup — force GC and clear accumulated state."""
+    """Periodic memory cleanup — force GC, clear stale SSE clients, and reset
+    the SNMP engine if RSS exceeds a safety threshold.
+
+    The singleton SnmpEngine with lookupMib=False prevents unbounded MIB cache
+    growth, so this is purely a safety net for unexpected memory conditions."""
     import gc
     import api.stream as stream_module
 
@@ -379,12 +383,27 @@ async def memory_cleanup():
 
     # Force garbage collection
     collected = gc.collect()
-
     logger.info(f"Memory cleanup: GC collected {collected} objects")
+
+    # Safety net: if RSS still exceeds threshold after GC, reset the
+    # SNMP engine to free any accumulated transport/MIB state.
+    _RSS_THRESHOLD_MB = 300
+    try:
+        import psutil
+        rss_mb = psutil.Process().memory_info().rss / (1024 * 1024)
+        if rss_mb > _RSS_THRESHOLD_MB:
+            logger.warning(
+                f"RSS {rss_mb:.0f} MB exceeds threshold ({_RSS_THRESHOLD_MB} MB), "
+                f"resetting SNMP engine"
+            )
+            from core.snmp_engine import reset_snmp_engine
+            await reset_snmp_engine()
+    except Exception as ex:
+        logger.warning(f"Memory threshold check failed (non-fatal): {ex}")
 
 
 def start_scheduler():
-    from core.snmp_engine import poll_all_devices, reset_snmp_engine
+    from core.snmp_engine import poll_all_devices
 
     # Schedule the ping polling every 1 second
     scheduler.add_job(schedule_pings, 'interval', seconds=1, id='ping_poller')
@@ -401,12 +420,6 @@ def start_scheduler():
     # SNMP Polling every 5 minutes
     scheduler.add_job(poll_all_devices, 'interval', minutes=5, id='snmp_poller')
 
-    # Periodic SNMP engine reset — frees MibBuilder cache, closes UDP sockets,
-    # resets transport state. With lookupMib=False the cache grows slowly, so
-    # 24h is sufficient. Offset by a few minutes from db_cleanup to avoid
-    # both running simultaneously.
-    scheduler.add_job(reset_snmp_engine, 'interval', hours=23, id='snmp_engine_reset')
-
     # Daily database cleanup
     scheduler.add_job(cleanup_old_data, 'interval', days=1, id='db_cleanup')
 
@@ -420,11 +433,12 @@ def start_scheduler():
     # Session cleanup every 6 hours
     scheduler.add_job(cleanup_sessions, 'interval', hours=6, id='session_cleanup')
 
-    # Memory cleanup every 5 minutes — force GC and clear accumulated state
+    # Memory cleanup every 5 minutes — force GC, clear stale SSE clients,
+    # reset SNMP engine if RSS exceeds safety threshold
     scheduler.add_job(memory_cleanup, 'interval', minutes=5, id='memory_cleanup')
 
     scheduler.start()
-    logger.info("Scheduler started: ping_poller (1s), minute_aggregator (1m), cache_refresh (30s), wal_checkpoint (5m), snmp_poller (5m), snmp_engine_reset (23h), memory_cleanup (5m), db_vacuum (1w), log_purge (1h)")
+    logger.info("Scheduler started: ping_poller (1s), minute_aggregator (1m), cache_refresh (30s), wal_checkpoint (5m), snmp_poller (5m), memory_cleanup (5m, includes SNMP engine reset on RSS > 300MB), db_vacuum (1w), log_purge (1h)")
 
 def shutdown_scheduler():
     scheduler.shutdown()
