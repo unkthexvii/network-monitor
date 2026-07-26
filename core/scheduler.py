@@ -441,5 +441,16 @@ def start_scheduler():
     logger.info("Scheduler started: ping_poller (1s), minute_aggregator (1m), cache_refresh (30s), wal_checkpoint (5m), snmp_poller (5m), memory_cleanup (5m, includes SNMP engine reset on RSS > 300MB), db_vacuum (1w), log_purge (1h)")
 
 def shutdown_scheduler():
-    scheduler.shutdown()
+    """Gracefully shut down the scheduler and release all resources."""
+    scheduler.shutdown(wait=False)
+
+    # Flush any buffered ping data so it isn't lost on restart
+    import asyncio as _asyncio
+    try:
+        loop = _asyncio.get_event_loop()
+        if loop.is_running():
+            _asyncio.ensure_future(ping_buffer.flush())
+    except Exception:
+        pass
+
     logger.info("Scheduler shut down")

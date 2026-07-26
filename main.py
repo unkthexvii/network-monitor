@@ -154,7 +154,18 @@ async def lifespan(app: FastAPI):
     # Shutdown
     logger.info("Shutting down Scheduler...")
     shutdown_scheduler()
+
+    # Dispose the singleton SnmpEngine to clean up transport and MIB state
+    from core.snmp_engine import reset_snmp_engine
+    await reset_snmp_engine()
+
+    # Close DB connection pool
     await dispose_engine()
+
+    # Stop tracemalloc
+    import tracemalloc
+    tracemalloc.stop()
+    logger.info("Shutdown complete")
 
 app = FastAPI(lifespan=lifespan, title="Network Monitoring System")
 
